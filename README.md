@@ -7,13 +7,13 @@ This plugin is only available on Unix platforms at the moment since it relies on
 
 | Extention     | Command       |
 | ------------- | ------------- |
-| .zip          | zip           |
-| .7z           | 7z            |
-| .rar          | rar           |
-| .tar.gz       | tar           |
-| .tar.bz2      | tar           |
-| .tar.xz       | tar           |
-| .tar          | tar           |
+| .zip          | zip -r        |
+| .7z           | 7z a          |
+| .rar          | rar a         |
+| .tar.gz       | tar czf       |
+| .tar.bz2      | tar cjf       |
+| .tar.xz       | tar cJf       |
+| .tar          | tar cpf       |
 
 ## Install
 
@@ -23,7 +23,7 @@ git clone https://github.com/KKV9/archive.yazi.git ~/.config/yazi/plugins/archiv
 
 ## Usage
 
-Add this to your `keymap.toml`:
+- Add this to your `keymap.toml`:
 
 ```toml
 [manager]
