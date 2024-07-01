@@ -11,11 +11,11 @@ local selected_or_hovered = ya.sync(function()
 end)
 
 -- Send error notification
-local function notify_error(message)
+local function notify_error(message, urgency)
 	ya.notify({
 		title = "Archive",
 		content = message,
-		level = "error",
+		level = urgency,
 		timeout = 5,
 	})
 end
@@ -27,7 +27,7 @@ local function is_command_available(cmd)
 	if cmd_exists then
 		return true
 	else
-		notify_error(string.format("%s not available", cmd))
+		notify_error(string.format("%s not available", cmd), "error")
 		return false
 	end
 end
@@ -40,7 +40,7 @@ return {
 		-- Get selected files
 		local urls = selected_or_hovered()
 		if #urls == 0 then
-			notify_error("No file selected")
+			notify_error("No file selected", "error")
 			return
 		end
 
@@ -77,7 +77,7 @@ return {
 		end
 
 		if not archive_cmd or not archive_arg then
-			notify_error("Unsupported file type")
+			notify_error("Unsupported file type", "error")
 			return
 		end
 
@@ -97,7 +97,7 @@ return {
 				position = { "top-center", y = 3, w = 40 },
 			})
 			if overwrite_answer:lower() ~= "y" then
-				notify_error(overwrite_answer)
+				notify_error("Operation canceled", "warn")
 				return
 			end
 		end
@@ -105,7 +105,10 @@ return {
 		-- Create directory
 		local mkdir_status, mkdir_err = Command("mkdir"):arg("-p"):arg(".tempzip/"):spawn():wait()
 		if not mkdir_status or not mkdir_status.success then
-			notify_error(string.format("Mkdir failed, exit code %s", mkdir_status and mkdir_status.code or mkdir_err))
+			notify_error(
+				string.format("Mkdir failed, exit code %s", mkdir_status and mkdir_status.code or mkdir_err),
+				"error"
+			)
 			return
 		end
 
@@ -113,7 +116,8 @@ return {
 		local copy_status, copy_err = Command("cp"):arg("-rt"):arg(".tempzip/"):args(urls):spawn():wait()
 		if not copy_status or not copy_status.success then
 			notify_error(
-				string.format("Copy with %s failed, exit code %s", urls, copy_status and copy_status.code or copy_err)
+				string.format("Copy with %s failed, exit code %s", urls, copy_status and copy_status.code or copy_err),
+				"error"
 			)
 			return
 		end
@@ -132,7 +136,8 @@ return {
 					"%s with selected files failed, exit code %s",
 					archive_arg,
 					archive_status and archive_status.code or archive_err
-				)
+				),
+				"error"
 			)
 		end
 
@@ -140,7 +145,8 @@ return {
 		local rm_status, rm_err = Command("rm"):arg("-rf"):arg(".tempzip/"):spawn():wait()
 		if not rm_status or not rm_status.success then
 			notify_error(
-				string.format("Remove .tempzip/ directory failed, exit code %s", rm_status and rm_status.code or rm_err)
+				string.format("Remove .tempzip/ directory failed, exit code %s", rm_status and rm_status.code or rm_err),
+				"error"
 			)
 		end
 	end,
