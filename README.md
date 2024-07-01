@@ -26,13 +26,10 @@ git clone https://github.com/KKV9/archive.yazi.git ~/.config/yazi/plugins/archiv
 - Add this to your `keymap.toml`:
 
 ```toml
-[manager]
-prepend_keymap = [
-  { on = [
-    "c",
-    "a",
-  ], run = "plugin archive", desc = "Create archive with selected files" },
-]
+[[manager.prepend_keymap]]
+on   = [ "c", "a" ]
+run  = "plugin archive"
+desc = "Archive selected files"
 ```
 
  - Select files or folders to add, then press `c` `a` to display the prompt.
