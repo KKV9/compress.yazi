@@ -1,15 +1,3 @@
--- Make list of sleected or hovered urls
-local selected_or_hovered = ya.sync(function()
-	local tab, paths = cx.active, {}
-	for _, u in pairs(tab.selected) do
-		paths[#paths + 1] = tostring(u)
-	end
-	if #paths == 0 and tab.current.hovered then
-		paths[1] = tostring(tab.current.hovered.url)
-	end
-	return paths
-end)
-
 -- Send error notification
 local function notify_error(message, urgency)
 	ya.notify({
@@ -19,6 +7,28 @@ local function notify_error(message, urgency)
 		timeout = 5,
 	})
 end
+
+-- Make list of selected or hovered urls
+local selected_or_hovered = ya.sync(function()
+	local first_dir
+	local tab, paths, names, is_same_dir = cx.active, {}, {}, true
+	for _, u in pairs(tab.selected) do
+		if not first_dir then
+			first_dir = u:parent()
+		elseif first_dir ~= u:parent() then
+			is_same_dir = false
+		end -- Check if all selected files share the same parent directory
+		paths[#paths + 1] = tostring(u)
+		names[#names + 1] = tostring(u:name()) -- Create a list of file urls and names
+	end
+	if #paths == 0 and tab.current.hovered then
+		paths[1] = tostring(tab.current.hovered.name)
+	end
+	if is_same_dir then
+		return names, is_same_dir
+	end
+	return paths, is_same_dir -- Return full paths if parent directories do not match
+end)
 
 -- Check if archive command is available
 local function is_command_available(cmd)
@@ -38,7 +48,7 @@ return {
 		ya.manager_emit("escape", { visual = true })
 
 		-- Get selected files
-		local urls = selected_or_hovered()
+		local urls, is_same_dir = selected_or_hovered()
 		if #urls == 0 then
 			notify_error("No file selected", "error")
 			return
@@ -64,9 +74,8 @@ return {
 			["%.tar$"] = { command = "tar", arg = "cpf" },
 		}
 
-		local archive_cmd
-		local archive_arg
-
+		-- Match user input to archive command
+		local archive_cmd, archive_arg
 		for pattern, cmd_pair in pairs(archive_commands) do
 			if output_name:match(pattern) then
 				if is_command_available(cmd_pair.command) then
@@ -76,6 +85,7 @@ return {
 			end
 		end
 
+		-- Check if no archive command is available for the extention
 		if not archive_cmd or not archive_arg then
 			notify_error("Unsupported file type", "error")
 			return
@@ -87,6 +97,24 @@ return {
 			title = "Overwrite an existing file y/N:"
 		else
 			title = "Add to an existing archive y/N:"
+		end
+
+		-- If all files share the same directory, no copying is required
+		if is_same_dir then
+			-- Archive files
+			local archive_status, archive_err =
+				Command(archive_cmd):arg(archive_arg):arg(output_name):args(urls):spawn():wait()
+			if not archive_status or not archive_status.success then
+				notify_error(
+					string.format(
+						"%s with selected files failed, exit code %s",
+						archive_arg,
+						archive_status and archive_status.code or archive_err
+					),
+					"error"
+				)
+			end
+			return
 		end
 
 		-- If file exists show overwrite prompt
