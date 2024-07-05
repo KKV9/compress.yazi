@@ -18,7 +18,10 @@ This plugin is only available on Unix platforms at the moment since it relies on
 ## Install
 
 ```bash
+# With git
 git clone https://github.com/KKV9/archive.yazi.git ~/.config/yazi/plugins/archive.yazi
+# Or with yazi plugin manager
+ya pack -a KKV9/command
 ```
 
 ## Usage

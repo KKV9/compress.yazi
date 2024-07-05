@@ -21,18 +21,13 @@ local selected_or_hovered = ya.sync(function()
 		paths[#paths + 1] = tostring(u)
 		names[#names + 1] = tostring(u:name()) -- Create a list of file urls and names
 	end
-	if #paths == 0 and tab.current.hovered then
-		paths[1] = tostring(tab.current.hovered.name)
-		names[1] = tostring(tab.current.hovered.name)
-		first_dir = tostring(tab.current.hovered.url:parent())
+	if #names == 0 and tab.current.hovered then
+		names[1] = tostring(tab.current.hovered.name) -- Name of hovered file
+		first_dir = tostring(tab.current.hovered.url:parent()) -- Hovered cwd
 	end
-	if tab.current.hovered then
-		output_dir = tostring(tab.current.hovered.url:parent())
-	else
-		output_dir = tostring(tab.current.cwd)
-	end
+	output_dir = tostring(tab.current.cwd) -- Set output dir to cwd
 	if is_same_dir then
-		return names, is_same_dir, tostring(first_dir), output_dir
+		return names, is_same_dir, tostring(first_dir), output_dir -- Return a seperate working dir and output dir
 	end
 	return paths, is_same_dir, output_dir, output_dir -- Return full paths if parent directories do not match
 end)
@@ -111,8 +106,10 @@ return {
 		if is_same_dir then
 			test_status =
 				Command("test"):arg("!"):arg("-f"):arg(output_dir .. "/" .. output_name):cwd(working_dir):spawn():wait()
+        -- Use full url for output file
 		else
 			test_status = Command("test"):arg("!"):arg("-f"):arg(output_name):cwd(working_dir):spawn():wait()
+        -- Use short name for output file
 		end
 		if not test_status or not test_status.success then
 			local overwrite_answer = ya.input({
@@ -130,9 +127,9 @@ return {
 			-- Archive files
 			local archive_status, archive_err = Command(archive_cmd)
 				:arg(archive_arg)
-				:arg(output_dir .. "/" .. output_name)
+				:arg(output_dir .. "/" .. output_name) -- CWD followed by output filename
 				:args(urls)
-				:cwd(working_dir)
+				:cwd(working_dir) -- Working directory contains files to be archived
 				:spawn()
 				:wait()
 			if not archive_status or not archive_status.success then
@@ -145,7 +142,7 @@ return {
 					"error"
 				)
 			end
-			return
+			return -- Finished
 		end
 
 		-- Create directory
