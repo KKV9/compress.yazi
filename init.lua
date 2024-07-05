@@ -10,7 +10,7 @@ end
 
 -- Make list of selected or hovered urls
 local selected_or_hovered = ya.sync(function()
-	local first_dir
+	local first_dir, output_dir
 	local tab, paths, names, is_same_dir = cx.active, {}, {}, true
 	for _, u in pairs(tab.selected) do
 		if not first_dir then
@@ -24,15 +24,17 @@ local selected_or_hovered = ya.sync(function()
 	if #paths == 0 and tab.current.hovered then
 		paths[1] = tostring(tab.current.hovered.name)
 		names[1] = tostring(tab.current.hovered.name)
-    first_dir = tostring(tab.current.hovered.url:parent())
+		first_dir = tostring(tab.current.hovered.url:parent())
+	end
+	if tab.current.hovered then
+		output_dir = tostring(tab.current.hovered.url:parent())
+	else
+		output_dir = tostring(tab.current.cwd)
 	end
 	if is_same_dir then
-		return names, is_same_dir, tostring(first_dir)
+		return names, is_same_dir, tostring(first_dir), output_dir
 	end
-  if tab.current.hovered then
-    first_dir = tostring(tab.current.hovered.url:parent())
-  end
-	return paths, is_same_dir, tostring(first_dir) -- Return full paths if parent directories do not match
+	return paths, is_same_dir, output_dir, output_dir -- Return full paths if parent directories do not match
 end)
 
 -- Check if archive command is available
@@ -53,7 +55,7 @@ return {
 		ya.manager_emit("escape", { visual = true })
 
 		-- Get selected files
-		local urls, is_same_dir, working_dir = selected_or_hovered()
+		local urls, is_same_dir, working_dir, output_dir = selected_or_hovered()
 		if #urls == 0 then
 			notify_error("No file selected", "error")
 			return
@@ -105,7 +107,13 @@ return {
 		end
 
 		-- If file exists show overwrite prompt
-		local test_status = Command("test"):arg("!"):arg("-f"):arg(output_name):cwd(working_dir):spawn():wait()
+		local test_status
+		if is_same_dir then
+			test_status =
+				Command("test"):arg("!"):arg("-f"):arg(output_dir .. "/" .. output_name):cwd(working_dir):spawn():wait()
+		else
+			test_status = Command("test"):arg("!"):arg("-f"):arg(output_name):cwd(working_dir):spawn():wait()
+		end
 		if not test_status or not test_status.success then
 			local overwrite_answer = ya.input({
 				title = title,
@@ -120,8 +128,13 @@ return {
 		-- If all files share the same directory, no copying is required
 		if is_same_dir then
 			-- Archive files
-			local archive_status, archive_err =
-				Command(archive_cmd):arg(archive_arg):arg(output_name):args(urls):cwd(working_dir):spawn():wait()
+			local archive_status, archive_err = Command(archive_cmd)
+				:arg(archive_arg)
+				:arg(output_dir .. "/" .. output_name)
+				:args(urls)
+				:cwd(working_dir)
+				:spawn()
+				:wait()
 			if not archive_status or not archive_status.success then
 				notify_error(
 					string.format(
@@ -146,7 +159,8 @@ return {
 		end
 
 		-- Copy files
-		local copy_status, copy_err = Command("cp"):arg("-rt"):arg(".tempzip/"):args(urls):cwd(working_dir):spawn():wait()
+		local copy_status, copy_err =
+			Command("cp"):arg("-rt"):arg(".tempzip/"):args(urls):cwd(working_dir):spawn():wait()
 		if not copy_status or not copy_status.success then
 			notify_error(
 				string.format("Copy with %s failed, exit code %s", urls, copy_status and copy_status.code or copy_err),
