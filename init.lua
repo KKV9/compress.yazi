@@ -8,28 +8,24 @@ local function notify_error(message, urgency)
 	})
 end
 
--- Make list of selected or hovered urls
+-- Make table of selected or hovered: path = "filenames"
 local selected_or_hovered = ya.sync(function()
-	local first_dir, output_dir
-	local tab, paths, names, is_same_dir = cx.active, {}, {}, true
+	local tab, paths, names, path_fnames = cx.active, {}, {}, {}
 	for _, u in pairs(tab.selected) do
-		if not first_dir then
-			first_dir = u:parent()
-		elseif first_dir ~= u:parent() then
-			is_same_dir = false
-		end -- Check if all selected files share the same parent directory
-		paths[#paths + 1] = tostring(u)
-		names[#names + 1] = tostring(u:name()) -- Create a list of file urls and names
+		paths[#paths + 1] = tostring(u:parent())
+		names[#names + 1] = tostring(u:name())
 	end
-	if #names == 0 and tab.current.hovered then
-		names[1] = tostring(tab.current.hovered.name) -- Name of hovered file
-		first_dir = tostring(tab.current.hovered.url:parent()) -- Hovered cwd
+	if #paths == 0 and tab.current.hovered then
+		paths[1] = tostring(tab.current.hovered.url:parent())
+		names[1] = tostring(tab.current.hovered.name)
 	end
-	output_dir = tostring(tab.current.cwd) -- Set output dir to cwd
-	if is_same_dir then
-		return names, is_same_dir, tostring(first_dir), output_dir -- Return a seperate working dir and output dir
+	for idx, name in ipairs(names) do
+		if not path_fnames[paths[idx]] then
+			path_fnames[paths[idx]] = {}
+		end
+		table.insert(path_fnames[paths[idx]], name)
 	end
-	return paths, is_same_dir, output_dir, output_dir -- Return full paths if parent directories do not match
+	return path_fnames, tostring(tab.current.cwd)
 end)
 
 -- Check if archive command is available
@@ -44,17 +40,30 @@ local function is_command_available(cmd)
 	end
 end
 
+-- Check if file exists
+local function file_exists(name)
+	local f = io.open(name, "r")
+	if f ~= nil then
+		io.close(f)
+		return true
+	else
+		return false
+	end
+end
+
+-- Append filename to it's parent directory
+local function combine_url(path, file)
+	path, file = Url(path), Url(file)
+	return tostring(path:join(file))
+end
+
 return {
 	entry = function()
 		-- Exit visual mode
 		ya.manager_emit("escape", { visual = true })
 
-		-- Get selected files
-		local urls, is_same_dir, working_dir, output_dir = selected_or_hovered()
-		if #urls == 0 then
-			notify_error("No file selected", "error")
-			return
-		end
+		-- Define file table and output_dir (pwd)
+		local path_fnames, output_dir = selected_or_hovered()
 
 		-- Get input
 		local output_name, event = ya.input({
@@ -70,68 +79,69 @@ return {
 			["%.zip$"] = { command = "zip", arg = "-r" },
 			["%.7z$"] = { command = "7z", arg = "a" },
 			["%.rar$"] = { command = "rar", arg = "a" },
-			["%.tar.gz$"] = { command = "tar", arg = "czf" },
-			["%.tar.bz2$"] = { command = "tar", arg = "cjf" },
-			["%.tar.xz$"] = { command = "tar", arg = "cJf" },
-			["%.tar$"] = { command = "tar", arg = "cpf" },
+			["%.tar.gz$"] = { command = "tar", arg = "rpf", compress = "gzip" },
+			["%.tar.xz$"] = { command = "tar", arg = "rpf", compress = "xz" },
+			["%.tar.bz2$"] = { command = "tar", arg = "rpf", compress = "bzip2" },
+			["%.tar$"] = { command = "tar", arg = "rpf" },
 		}
 
 		-- Match user input to archive command
-		local archive_cmd, archive_arg
+		local archive_cmd, archive_arg, archive_compress
 		for pattern, cmd_pair in pairs(archive_commands) do
 			if output_name:match(pattern) then
-				if is_command_available(cmd_pair.command) then
-					archive_cmd = cmd_pair.command
-					archive_arg = cmd_pair.arg
-				end
+				archive_cmd = cmd_pair.command
+				archive_arg = cmd_pair.arg
+				archive_compress = cmd_pair.compress
 			end
 		end
 
 		-- Check if no archive command is available for the extention
-		if not archive_cmd or not archive_arg then
-			notify_error("Unsupported file type", "error")
+		if not archive_cmd then
+			notify_error("Unsupported file extention", "error")
 			return
 		end
 
-		-- Tar will overwrite archive, other commands will add files
-		local title
-		if archive_cmd == "tar" then
-			title = "Overwrite an existing file y/N:"
-		else
-			title = "Add to an existing archive y/N:"
+		-- Exit if archive command is not available
+		if not is_command_available(archive_cmd) then
+			return
+		end
+
+		-- Exit if compress command is not available
+		if archive_compress and not is_command_available(archive_compress) then
+			return
 		end
 
 		-- If file exists show overwrite prompt
-		local test_status
-		if is_same_dir then
-			test_status =
-				Command("test"):arg("!"):arg("-f"):arg(output_dir .. "/" .. output_name):cwd(working_dir):spawn():wait()
-        -- Use full url for output file
-		else
-			test_status = Command("test"):arg("!"):arg("-f"):arg(output_name):cwd(working_dir):spawn():wait()
-        -- Use short name for output file
-		end
-		if not test_status or not test_status.success then
-			local overwrite_answer = ya.input({
-				title = title,
-				position = { "top-center", y = 3, w = 40 },
-			})
-			if overwrite_answer:lower() ~= "y" then
-				notify_error("Operation canceled", "warn")
-				return
+		local output_url = combine_url(output_dir, output_name)
+		while true do
+			if file_exists(output_url) then
+				local overwrite_answer = ya.input({
+					title = "Overwrite " .. output_name .. "? y/N:",
+					position = { "top-center", y = 3, w = 40 },
+				})
+				if overwrite_answer:lower() ~= "y" then
+					notify_error("Operation canceled", "warn")
+					return -- If no overwrite selected, exit
+				else
+					local rm_status, rm_err = os.remove(output_url)
+					if not rm_status then
+						notify_error(string.format("Failed to remove %s, exit code %s", output_name, rm_err), "error")
+						return
+					end -- If overwrite fails, exit
+				end
+			end
+			if archive_compress and not output_name:match("%.tar$") then
+				output_name = output_name:match("(.*%.tar)") -- Test for .tar and .tar.*
+				output_url = combine_url(output_dir, output_name) -- Update output_url
+			else
+				break
 			end
 		end
 
-		-- If all files share the same directory, no copying is required
-		if is_same_dir then
-			-- Archive files
-			local archive_status, archive_err = Command(archive_cmd)
-				:arg(archive_arg)
-				:arg(output_dir .. "/" .. output_name) -- CWD followed by output filename
-				:args(urls)
-				:cwd(working_dir) -- Working directory contains files to be archived
-				:spawn()
-				:wait()
+		-- Add to output archive in each path, their respective files
+		for path, names in pairs(path_fnames) do
+			local archive_status, archive_err =
+				Command(archive_cmd):arg(archive_arg):arg(output_url):args(names):cwd(path):spawn():wait()
 			if not archive_status or not archive_status.success then
 				notify_error(
 					string.format(
@@ -142,56 +152,23 @@ return {
 					"error"
 				)
 			end
-			return -- Finished
 		end
 
-		-- Create directory
-		local mkdir_status, mkdir_err = Command("mkdir"):arg("-p"):cwd(working_dir):arg(".tempzip/"):spawn():wait()
-		if not mkdir_status or not mkdir_status.success then
-			notify_error(
-				string.format("Mkdir failed, exit code %s", mkdir_status and mkdir_status.code or mkdir_err),
-				"error"
-			)
-			return
-		end
-
-		-- Copy files
-		local copy_status, copy_err =
-			Command("cp"):arg("-rt"):arg(".tempzip/"):args(urls):cwd(working_dir):spawn():wait()
-		if not copy_status or not copy_status.success then
-			notify_error(
-				string.format("Copy with %s failed, exit code %s", urls, copy_status and copy_status.code or copy_err),
-				"error"
-			)
-			return
-		end
-
-		-- Archive files
-		local archive_status, archive_err = Command(archive_cmd)
-			:arg(archive_arg)
-			:arg(string.format("../%s", output_name))
-			:arg(".")
-			:cwd(working_dir .. "/.tempzip/")
-			:spawn()
-			:wait()
-		if not archive_status or not archive_status.success then
-			notify_error(
-				string.format(
-					"%s with selected files failed, exit code %s",
-					archive_arg,
-					archive_status and archive_status.code or archive_err
-				),
-				"error"
-			)
-		end
-
-		-- Remove temporary files
-		local rm_status, rm_err = Command("rm"):arg("-rf"):arg(".tempzip/"):cwd(working_dir):spawn():wait()
-		if not rm_status or not rm_status.success then
-			notify_error(
-				string.format("Remove .tempzip/ directory failed, exit code %s", rm_status and rm_status.code or rm_err),
-				"error"
-			)
+		-- Use compress command if needed
+		if archive_compress then
+			local compress_status, compress_err =
+				Command(archive_compress):arg(output_name):cwd(output_dir):spawn():wait()
+			if not compress_status or not compress_status.success then
+				notify_error(
+					string.format(
+						"%s with %s failed, exit code %s",
+						archive_compress,
+						output_name,
+						compress_status and compress_status.code or compress_err
+					),
+					"error"
+				)
+			end
 		end
 	end,
 }

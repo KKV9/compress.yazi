@@ -1,7 +1,6 @@
 # archive.yazi
 
 A Yazi plugin that compresses selected files to an archive.
-This plugin is only available on Unix platforms at the moment since it relies on sh.
 
 ## Supported file types
 
@@ -10,10 +9,10 @@ This plugin is only available on Unix platforms at the moment since it relies on
 | .zip          | zip -r        |
 | .7z           | 7z a          |
 | .rar          | rar a         |
-| .tar.gz       | tar czf       |
-| .tar.bz2      | tar cjf       |
-| .tar.xz       | tar cJf       |
-| .tar          | tar cpf       |
+| .tar          | tar rpf       |
+| .tar.gz       | gzip          |
+| .tar.bz2      | bzip2         |
+| .tar.xz       | xz            |
 
 ## Install
 
@@ -35,8 +34,7 @@ run  = "plugin archive"
 desc = "Archive selected files"
 ```
 
- - Select files or folders to add, then press `c` `a` to display the prompt.
- - Type a name for a new or existing archive. 
+ - Select files or folders to add, then press `c` `a` to create a new archive.
+ - Type a name for the new file. 
  - The file extention must match one of the supported filetype extentions.
- - Tar overwrites an existing archive with newly selected files when overwriting.
- - Other archive formats add newly selected files to an existing archive when overwriting.
+ - The desired archive/compression command must be installed on your system.
