@@ -8,7 +8,7 @@ local function notify_error(message, urgency)
 	})
 end
 
--- Make table of selected or hovered: path = "filenames"
+-- Make table of selected or hovered: path = filenames
 local selected_or_hovered = ya.sync(function()
 	local tab, paths, names, path_fnames = cx.active, {}, {}, {}
 	for _, u in pairs(tab.selected) do
@@ -30,7 +30,15 @@ end)
 
 -- Check if archive command is available
 local function is_command_available(cmd)
-	local stat_cmd = string.format("command -v %s >/dev/null 2>&1", cmd)
+	local is_windows = package.config:sub(1, 1) == "\\"
+	local stat_cmd
+
+	if is_windows then
+		stat_cmd = string.format("where %s > nul 2>&1", cmd)
+	else
+		stat_cmd = string.format("command -v %s >/dev/null 2>&1", cmd)
+	end
+
 	local cmd_exists = os.execute(stat_cmd)
 	if cmd_exists then
 		return true
