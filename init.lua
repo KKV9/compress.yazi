@@ -8,6 +8,9 @@ local function notify_error(message, urgency)
 	})
 end
 
+-- Check for windows
+local is_windows = package.config:sub(1, 1) == "\\"
+
 -- Make table of selected or hovered: path = filenames
 local selected_or_hovered = ya.sync(function()
 	local tab, paths, names, path_fnames = cx.active, {}, {}, {}
@@ -30,7 +33,6 @@ end)
 
 -- Check if archive command is available
 local function is_command_available(cmd)
-	local is_windows = package.config:sub(1, 1) == "\\"
 	local stat_cmd
 
 	if is_windows then
@@ -84,22 +86,48 @@ return {
 
 		-- Use appropriate archive command
 		local archive_commands = {
-			["%.zip$"] = { command = "zip", arg = "-r" },
-			["%.7z$"] = { command = "7z", arg = "a" },
-			["%.rar$"] = { command = "rar", arg = "a" },
-			["%.tar.gz$"] = { command = "tar", arg = "rpf", compress = "gzip" },
-			["%.tar.xz$"] = { command = "tar", arg = "rpf", compress = "xz" },
-			["%.tar.bz2$"] = { command = "tar", arg = "rpf", compress = "bzip2" },
-			["%.tar$"] = { command = "tar", arg = "rpf" },
+			["%.zip$"] = { command = "zip", args = { "-r" } },
+			["%.7z$"] = { command = "7z", args = { "a" } },
+			["%.tar.gz$"] = { command = "tar", args = { "rpf" }, compress = "gzip" },
+			["%.tar.xz$"] = { command = "tar", args = { "rpf" }, compress = "xz" },
+			["%.tar.bz2$"] = { command = "tar", args = { "rpf" }, compress = "bzip2" },
+			["%.tar$"] = { command = "tar", args = { "rpf" } },
 		}
 
+		if is_windows then
+			archive_commands = {
+				["%.zip$"] = { command = "7z", args = { "a", "-tzip" } },
+				["%.7z$"] = { command = "7z", args = { "a" } },
+				["%.tar.gz$"] = {
+					command = "tar",
+					args = { "rpf" },
+					compress = "7z",
+					compress_args = { "a", "-tgzip", "-sdel", output_name },
+				},
+				["%.tar.xz$"] = {
+					command = "tar",
+					args = { "rpf" },
+					compress = "7z",
+					compress_args = { "a", "-txz", "-sdel", output_name },
+				},
+				["%.tar.bz2$"] = {
+					command = "tar",
+					args = { "rpf" },
+					compress = "7z",
+					compress_args = { "a", "-tbzip2", "-sdel", output_name },
+				},
+				["%.tar$"] = { command = "tar", args = { "rpf" } },
+			}
+		end
+
 		-- Match user input to archive command
-		local archive_cmd, archive_arg, archive_compress
+		local archive_cmd, archive_args, archive_compress, archive_compress_args
 		for pattern, cmd_pair in pairs(archive_commands) do
 			if output_name:match(pattern) then
 				archive_cmd = cmd_pair.command
-				archive_arg = cmd_pair.arg
+				archive_args = cmd_pair.args
 				archive_compress = cmd_pair.compress
+				archive_compress_args = cmd_pair.compress_args or {}
 			end
 		end
 
@@ -149,12 +177,12 @@ return {
 		-- Add to output archive in each path, their respective files
 		for path, names in pairs(path_fnames) do
 			local archive_status, archive_err =
-				Command(archive_cmd):arg(archive_arg):arg(output_url):args(names):cwd(path):spawn():wait()
+				Command(archive_cmd):args(archive_args):arg(output_url):args(names):cwd(path):spawn():wait()
 			if not archive_status or not archive_status.success then
 				notify_error(
 					string.format(
 						"%s with selected files failed, exit code %s",
-						archive_arg,
+						archive_args,
 						archive_status and archive_status.code or archive_err
 					),
 					"error"
@@ -165,7 +193,7 @@ return {
 		-- Use compress command if needed
 		if archive_compress then
 			local compress_status, compress_err =
-				Command(archive_compress):arg(output_name):cwd(output_dir):spawn():wait()
+				Command(archive_compress):args(archive_compress_args):arg(output_name):cwd(output_dir):spawn():wait()
 			if not compress_status or not compress_status.success then
 				notify_error(
 					string.format(

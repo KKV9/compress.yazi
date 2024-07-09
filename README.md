@@ -4,15 +4,18 @@ A Yazi plugin that compresses selected files to an archive.
 
 ## Supported file types
 
-| Extention     | Command       |
-| ------------- | ------------- |
-| .zip          | zip -r        |
-| .7z           | 7z a          |
-| .rar          | rar a         |
-| .tar          | tar rpf       |
-| .tar.gz       | gzip          |
-| .tar.bz2      | bzip2         |
-| .tar.xz       | xz            |
+| Extention     | Unix Command  | Windows Command |
+| ------------- | ------------- | --------------- |
+| .zip          | zip -r        | 7z a -tzip      |
+| .7z           | 7z a          | 7z a            |
+| .tar          | tar rpf       | tar rpf         |
+| .tar.gz       | gzip          | 7z a -tgzip     |
+| .tar.bz2      | bzip2         | 7z a -tbzip2    |
+| .tar.xz       | xz            | 7z a -txz       |
+
+
+**NOTE:** Windows users are required to install 7-Zip and add 7z.exe to the `path` environment variable, only tar archives will be available otherwise.
+
 
 ## Install
 
