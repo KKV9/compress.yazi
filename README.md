@@ -20,13 +20,15 @@ A Yazi plugin that compresses selected files to an archive.
 ## Install
 
 ```bash
-# With git
+# For Unix platforms
 git clone https://github.com/KKV9/archive.yazi.git ~/.config/yazi/plugins/archive.yazi
+
+## For Windows
+git clone https://github.com/KKV9/archive.yazi.git %AppData%\yazi\config\plugins\archive.yazi
+
 # Or with yazi plugin manager
 ya pack -a KKV9/archive
 ```
-
-## Usage
 
 - Add this to your `keymap.toml`:
 
@@ -36,6 +38,8 @@ on   = [ "c", "a" ]
 run  = "plugin archive"
 desc = "Archive selected files"
 ```
+
+## Usage
 
  - Select files or folders to add, then press `c` `a` to create a new archive.
  - Type a name for the new file. 
