@@ -9,7 +9,7 @@ local function notify_error(message, urgency)
 end
 
 -- Check for windows
-local is_windows = package.config:sub(1, 1) == "\\"
+local is_windows = ya.target_os() == "windows"
 
 -- Make table of selected or hovered: path = filenames
 local selected_or_hovered = ya.sync(function()
@@ -91,6 +91,7 @@ return {
 			["%.tar.gz$"] = { command = "tar", args = { "rpf" }, compress = "gzip" },
 			["%.tar.xz$"] = { command = "tar", args = { "rpf" }, compress = "xz" },
 			["%.tar.bz2$"] = { command = "tar", args = { "rpf" }, compress = "bzip2" },
+			["%.tar.zst$"] = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
 			["%.tar$"] = { command = "tar", args = { "rpf" } },
 		}
 
@@ -116,6 +117,7 @@ return {
 					compress = "7z",
 					compress_args = { "a", "-tbzip2", "-sdel", output_name },
 				},
+				["%.tar.zst$"] = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
 				["%.tar$"] = { command = "tar", args = { "rpf" } },
 			}
 		end
