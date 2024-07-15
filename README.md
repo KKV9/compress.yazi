@@ -1,4 +1,4 @@
-# archive.yazi
+# ~~archive.yazi~~ compress.yazi
 
 A Yazi plugin that compresses selected files to an archive.
 
