@@ -21,13 +21,13 @@ A Yazi plugin that compresses selected files to an archive.
 
 ```bash
 # For Unix platforms
-git clone https://github.com/KKV9/archive.yazi.git ~/.config/yazi/plugins/archive.yazi
+git clone https://github.com/KKV9/archive.yazi.git ~/.config/yazi/plugins/compress.yazi
 
 ## For Windows
-git clone https://github.com/KKV9/archive.yazi.git %AppData%\yazi\config\plugins\archive.yazi
+git clone https://github.com/KKV9/archive.yazi.git %AppData%\yazi\config\plugins\compress.yazi
 
-# Or with yazi plugin manager
-ya pack -a KKV9/archive
+# Or with yazi plugin manager -- Unsupported on latest git version
+# ya pack -a KKV9/archive
 ```
 
 - Add this to your `keymap.toml`:
@@ -35,7 +35,7 @@ ya pack -a KKV9/archive
 ```toml
 [[manager.prepend_keymap]]
 on   = [ "c", "a" ]
-run  = "plugin archive"
+run  = "plugin compress"
 desc = "Archive selected files"
 ```
 
