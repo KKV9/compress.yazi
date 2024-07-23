@@ -9,7 +9,7 @@ local function notify_error(message, urgency)
 end
 
 -- Check for windows
-local is_windows = ya.target_os() == "windows"
+local is_windows = package.config:sub(1, 1) == "\\"
 
 -- Make table of selected or hovered: path = filenames
 local selected_or_hovered = ya.sync(function()
