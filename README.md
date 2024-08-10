@@ -1,6 +1,6 @@
 # ~~archive.yazi~~ compress.yazi
 
-A Yazi plugin that compresses selected files to an archive.
+A Yazi plugin that compresses selected files to an archive. Supporting yazi versions 0.2.5 and up.
 
 ## Supported file types
 
