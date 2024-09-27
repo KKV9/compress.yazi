@@ -49,16 +49,6 @@ local function is_command_available(cmd)
 	end
 end
 
--- Archive command list --> string
-local function find_binary(cmd_list)
-	for _, cmd in ipairs(cmd_list) do
-		if is_command_available(cmd) then
-			return cmd
-		end
-	end
-	return cmd_list[1] -- Return first command as fallback
-end
-
 -- Check if file exists
 local function file_exists(name)
 	local f = io.open(name, "r")
@@ -95,61 +85,68 @@ return {
 
 		-- Use appropriate archive command
 		local archive_commands = {
-			["%.zip$"] = { command = "zip", args = { "-r" } },
-			["%.7z$"] = { command = { "7z", "7zz" }, args = { "a" } },
-			["%.tar.gz$"] = { command = "tar", args = { "rpf" }, compress = "gzip" },
-			["%.tar.xz$"] = { command = "tar", args = { "rpf" }, compress = "xz" },
-			["%.tar.bz2$"] = { command = "tar", args = { "rpf" }, compress = "bzip2" },
-			["%.tar.zst$"] = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
-			["%.tar$"] = { command = "tar", args = { "rpf" } },
+			["%.zip$"] = {
+				unix = { command = "7z", args = { "a", "-tzip" } },
+				unix_fallback = { command = "zip", args = { "-r" } },
+				windows = { command = "7z", args = { "a", "-tzip" } },
+			},
+			["%.7z$"] = {
+				unix = { command = "7z", args = { "a", "-t7z" } },
+				unix_fallback = { command = "7z", args = { "a" } },
+				windows = { command = "7z", args = { "a" } },
+			},
+			["%.tar$"] = {
+				unix = { command = "tar", args = { "-cf" } },
+				unix_fallback = { command = "tar", args = { "rpf" } },
+				windows = { command = "tar", args = { "rpf" } },
+			},
+			["%.tar.gz$"] = {
+				unix = { command = "tar", args = { "-czf" } },
+				unix_fallback = { command = "tar", args = { "-cf" }, compress = "gzip" },
+				windows = { command = "7z", args = { "a", "-tgzip" } },
+			},
+			["%.tar.xz$"] = {
+				unix = { command = "tar", args = { "-cJf" } },
+				unix_fallback = { command = "tar", args = { "-cf" }, compress = "xz" },
+				windows = { command = "7z", args = { "a", "-txz" } },
+			},
+			["%.tar.bz2$"] = {
+				unix = { command = "tar", args = { "-cjf" } },
+				unix_fallback = { command = "tar", args = { "-cf" }, compress = "bzip2" },
+				windows = { command = "7z", args = { "a", "-tbzip2" } },
+			},
+			["%.tar.zst$"] = {
+				unix = { command = "tar", args = { "--use-compress-program=zstd", "-cf" } },
+				unix_fallback = { command = "tar", args = { "-cf" }, compress = "zstd" },
+				windows = { command = "tar", args = { "-cf" }, compress = "zstd" },
+			},
 		}
-
-		if is_windows then
-			archive_commands = {
-				["%.zip$"] = { command = "7z", args = { "a", "-tzip" } },
-				["%.7z$"] = { command = "7z", args = { "a" } },
-				["%.tar.gz$"] = {
-					command = "tar",
-					args = { "rpf" },
-					compress = "7z",
-					compress_args = { "a", "-tgzip", "-sdel", output_name },
-				},
-				["%.tar.xz$"] = {
-					command = "tar",
-					args = { "rpf" },
-					compress = "7z",
-					compress_args = { "a", "-txz", "-sdel", output_name },
-				},
-				["%.tar.bz2$"] = {
-					command = "tar",
-					args = { "rpf" },
-					compress = "7z",
-					compress_args = { "a", "-tbzip2", "-sdel", output_name },
-				},
-				["%.tar.zst$"] = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
-				["%.tar$"] = { command = "tar", args = { "rpf" } },
-			}
-		end
 
 		-- Match user input to archive command
 		local archive_cmd, archive_args, archive_compress, archive_compress_args
 		for pattern, cmd_pair in pairs(archive_commands) do
 			if output_name:match(pattern) then
-				archive_cmd = cmd_pair.command
-				archive_args = cmd_pair.args
-				archive_compress = cmd_pair.compress
-				archive_compress_args = cmd_pair.compress_args or {}
+				if is_windows then
+					archive_cmd = cmd_pair.windows.command
+					archive_args = cmd_pair.windows.args
+					archive_compress = cmd_pair.windows.compress
+				else
+					if is_command_available(cmd_pair.unix.command) then
+						archive_cmd = cmd_pair.unix.command
+						archive_args = cmd_pair.unix.args
+					else
+						archive_cmd = cmd_pair.unix_fallback.command
+						archive_args = cmd_pair.unix_fallback.args
+						archive_compress = cmd_pair.unix_fallback.compress
+					end
+				end
+				break
 			end
 		end
 
-		-- Check if archive command has multiple names
-		if type(archive_cmd) == "table" then
-			archive_cmd = find_binary(archive_cmd)
-		end
-
-		-- Check if no archive command is available for the extention
+		-- Check if no archive command is available for the extension
 		if not archive_cmd then
-			notify_error("Unsupported file extention", "error")
+			notify_error("Unsupported file extension", "error")
 			return
 		end
 
@@ -200,7 +197,7 @@ return {
 				notify_error(
 					string.format(
 						"%s with selected files failed, exit code %s",
-						archive_args,
+						archive_cmd,
 						archive_status and archive_status.code or archive_err
 					),
 					"error"
@@ -211,7 +208,7 @@ return {
 		-- Use compress command if needed
 		if archive_compress then
 			local compress_status, compress_err =
-				Command(archive_compress):args(archive_compress_args):arg(output_name):cwd(output_dir):spawn():wait()
+				Command(archive_compress):arg(output_name):cwd(output_dir):spawn():wait()
 			if not compress_status or not compress_status.success then
 				notify_error(
 					string.format(
