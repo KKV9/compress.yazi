@@ -195,7 +195,7 @@ return {
 		-- Add to output archive in each path, their respective files
 		for path, names in pairs(path_fnames) do
 			local archive_status, archive_err =
-				Command(archive_cmd):args(archive_args):arg(output_url):args(names):cwd(path):spawn():wait()
+				Command(archive_cmd):arg(archive_args):arg(output_url):arg(names):cwd(path):spawn():wait()
 			if not archive_status or not archive_status.success then
 				notify_error(
 					string.format(
@@ -211,7 +211,7 @@ return {
 		-- Use compress command if needed
 		if archive_compress then
 			local compress_status, compress_err =
-				Command(archive_compress):args(archive_compress_args):arg(output_name):cwd(output_dir):spawn():wait()
+				Command(archive_compress):arg(archive_compress_args):arg(output_name):cwd(output_dir):spawn():wait()
 			if not compress_status or not compress_status.success then
 				notify_error(
 					string.format(
