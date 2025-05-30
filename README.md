@@ -15,7 +15,7 @@ A Yazi plugin that compresses selected files to an archive. Supporting yazi v25.
 | .tar.zst      | zstd          | zstd            |
 
 
-**NOTE:** Windows users are required to install 7-Zip and add 7z.exe to the `path` environment variable, only tar archives will be available otherwise.
+**NOTE:** Windows users are required to install 7-Zip and add 7z.exe to the `path` environment variable, only tar archives will be available otherwise. Alternatively, install nanazip.
 
 
 ## Install
@@ -24,7 +24,7 @@ A Yazi plugin that compresses selected files to an archive. Supporting yazi v25.
 # For Unix platforms
 git clone https://github.com/KKV9/compress.yazi.git ~/.config/yazi/plugins/compress.yazi
 
-## For Windows
+## For Windows cmd - Don't use powershell!
 git clone https://github.com/KKV9/compress.yazi.git %AppData%\yazi\config\plugins\compress.yazi
 
 # Or with yazi plugin manager
@@ -65,7 +65,8 @@ desc = "Archive selected files (password+header+level)"
 
 ## Flags
 
- - Combine flags for more functionality. Currently unix only -- Untested on windows.
+ - Combine flags for more functionality.
  - -p allows you to set a password (7z and zip only)
  - -h allows you to encrypt header (7z only)
  - -l allows you to set a compression level (0 - 9) -- 0 = Store, 9 = Best compression
+ - Compression level currently works for 7z and zip on all platforms -- Additionally gz, xz and bz2 for unix

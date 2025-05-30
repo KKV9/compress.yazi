@@ -106,11 +106,11 @@ return {
 		local archive_commands = {
 			["%.zip$"] = {
 				unix = { command = "zip", args = { "-r" }, level_arg = "-", passwordable = true },
-				windows = { command = "7z", args = { "a", "-tzip" } },
+				windows = { command = "7z", args = { "a", "-tzip" }, level_arg = "-mx=", passwordable = true },
 			},
 			["%.7z$"] = {
 				unix = { command = { "7z", "7zz" }, args = { "a" }, level_arg = "-mx=", header_arg = "-mhe=on", passwordable = true },
-				windows = { command = "7z", args = { "a" } },
+				windows = { command = "7z", args = { "a" }, level_arg = "-mx=", header_arg = "-mhe=on", passwordable = true },
 			},
 			["%.tar.gz$"] = {
 				unix = { command = "tar", args = { "rpf" }, level_arg = "-", compress = "gzip" },
@@ -191,7 +191,7 @@ return {
 		end
 
 		-- Exit if compress command is not available
-		if archive_compress and not is_command_available(archive_compress) then
+		if archive_compress ~= "" and not is_command_available(archive_compress) then
 			notify_error(string.format("%s compression not available", archive_compress), "error")
 			return
 		end
@@ -215,13 +215,16 @@ return {
 					end -- If overwrite fails, exit
 				end
 			end
-			if archive_compress and not output_name:match("%.tar$") then
+			if archive_compress ~= "" and not output_name:match("%.tar$") then
 				output_name = output_name:match("(.*%.tar)") -- Test for .tar and .tar.*
 				output_url = combine_url(output_dir, output_name) -- Update output_url
 			else
 				break
 			end
 		end
+
+		local archive_additional_args = {}
+		local compress_additional_args = {}
 
 		-- Get password if selected
 		local cmd_password = ""
@@ -236,14 +239,16 @@ return {
 			end
 			if output_password ~= "" then
 				cmd_password = "-P" .. output_password
+				table.insert(archive_additional_args, cmd_password)
 			end
+		end
+
+		if is_encrypted and archive_header_arg ~= "" then
+			table.insert(archive_additional_args, archive_header_arg)
 		end
 
 		-- Get level if selected
 		local cmd_level = ""
-		-- final command arguments for compression and archive
-		local archive_additional_args = { cmd_password, cmd_level, archive_header_arg}
-		local compress_additional_args = { output_name }
 		if archive_level_arg ~= "" and is_level then
 			local output_level, event = ya.input({
 				title = "Enter compression level (0 - 9):",
@@ -255,22 +260,23 @@ return {
 			-- Make sure this string is a single digit. False if using tar & compression level is 0 (defeats the purpose of using compression).
 			if output_level ~= "" and tonumber(output_level) ~= nil and string.len(output_level) == 1 and not ( archive_cmd == "tar" and output_level == "0" ) then
 				cmd_level = archive_level_arg .. output_level
+				table.insert(archive_additional_args, cmd_level)
 			end
 			-- Decide if level will be used for comrpession command or archive command
 			if cmd_level ~= "" and archive_level_arg ~= "" and archive_compress ~= "" then
-				compress_additional_args = { cmd_level, output_name}
+				compress_additional_args = { cmd_level }
 			end
 		end
 
 		-- Add to output archive in each path, their respective files
 		for path, names in pairs(path_fnames) do
 			local archive_status, archive_err = 
-			Command(archive_cmd):arg(archive_args):arg(output_url):arg(names):arg(archive_additional_args):cwd(path):spawn():wait()
+			Command(archive_cmd):arg(archive_args):arg(archive_additional_args):arg(output_url):arg(names):cwd(path):spawn():wait()
 			if not archive_status or not archive_status.success then
 				notify_error(
 					string.format(
 						"%s with selected files failed, exit code %s",
-						archive_args,
+						archive_cmd,
 						archive_status and archive_status.code or archive_err
 					),
 					"error"
@@ -281,7 +287,7 @@ return {
 		-- Use compress command if needed
 		if archive_compress ~= "" then
 			local compress_status, compress_err =
-				Command(archive_compress):arg(archive_compress_args):arg(compress_additional_args):cwd(output_dir):spawn():wait()
+				Command(archive_compress):arg(archive_compress_args):arg(compress_additional_args):arg(output_name):cwd(output_dir):spawn():wait()
 					if not compress_status or not compress_status.success then
 						notify_error(
 						string.format(
