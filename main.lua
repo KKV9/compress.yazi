@@ -117,6 +117,7 @@ return {
 				windows = {
 					command = "tar",
 					args = { "rpf" },
+					level_arg = "-mx=",
 					compress = "7z",
 					compress_args = { "a", "-tgzip", "-sdel", output_name },
 				},
@@ -126,6 +127,7 @@ return {
 				windows = {
 					command = "tar",
 					args = { "rpf" },
+					level_arg = "-mx=",
 					compress = "7z",
 					compress_args = { "a", "-txz", "-sdel", output_name },
 				},
@@ -135,6 +137,7 @@ return {
 				windows = {
 					command = "tar",
 					args = { "rpf" },
+					level_arg = "-mx=",
 					compress = "7z",
 					compress_args = { "a", "-tbzip2", "-sdel", output_name },
 				},
@@ -260,11 +263,12 @@ return {
 			-- Make sure this string is a single digit. False if using tar & compression level is 0 (defeats the purpose of using compression).
 			if output_level ~= "" and tonumber(output_level) ~= nil and string.len(output_level) == 1 and not ( archive_cmd == "tar" and output_level == "0" ) then
 				cmd_level = archive_level_arg .. output_level
-				table.insert(archive_additional_args, cmd_level)
 			end
-			-- Decide if level will be used for comrpession command or archive command
-			if cmd_level ~= "" and archive_level_arg ~= "" and archive_compress ~= "" then
-				compress_additional_args = { cmd_level }
+			-- Decide if level will be used for compression command or archive command
+			if archive_compress == "" then
+				table.insert(archive_additional_args, cmd_level)
+			else
+				table.insert(compress_additional_args, cmd_level)
 			end
 		end
 

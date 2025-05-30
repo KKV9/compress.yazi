@@ -69,4 +69,4 @@ desc = "Archive selected files (password+header+level)"
  - -p allows you to set a password (7z and zip only)
  - -h allows you to encrypt header (7z only)
  - -l allows you to set a compression level (0 - 9) -- 0 = Store, 9 = Best compression
- - Compression level currently works for 7z and zip on all platforms -- Additionally gz, xz and bz2 for unix
+ - Compression level currently works for all compression algorithims except zstd
