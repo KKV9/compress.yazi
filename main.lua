@@ -3,6 +3,29 @@ local is_windows = ya.target_family() == "windows"
 -- Define flags and strings
 local is_password, is_encrypted, is_level, cmd_password, cmd_level = false, false, false, "", ""
 
+-- Function to check valid filename
+local function is_valid_filename(name)
+    -- Trim whitespace from both ends
+    name = name:match("^%s*(.-)%s*$")
+    if name == "" then return false end
+    if is_windows then
+        -- Windows forbidden chars and reserved names
+        if name:find('[<>:"/\\|%?%*]') then return false end
+        local reserved = {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        }
+        for _, r in ipairs(reserved) do
+            if name:upper() == r or name:upper():match("^" .. r .. "%.") then return false end
+        end
+    else
+        -- Unix forbidden chars
+        if name:find("/") or name:find("%z") then return false end
+    end
+    return true
+end
+
 -- Function to send notifications
 local function notify_error(message, urgency)
 	ya.notify({
@@ -150,8 +173,8 @@ return {
 			is_level = string.find(args_string, "l") ~= nil
 		end
 		-- Exit visual mode
-		ya.manager_emit("escape", { visual = true })
-		-- Define file table and output_dir (pwd)
+		ya.emit("escape", { visual = true })
+		-- Define file table and output_dir (pwd) 
 		local path_fnames, output_dir = selected_or_hovered()
 		-- Get archive filename
 		local output_name, event = ya.input({
@@ -159,6 +182,10 @@ return {
 			position = { "top-center", y = 3, w = 40 },
 		})
 		if event ~= 1 then
+			return
+		end
+		if not is_valid_filename(output_name) then
+			notify_error("Invalid archive filename", "error")
 			return
 		end
 
@@ -177,6 +204,12 @@ return {
 			end
 		end
 
+		-- Check if no archive command is available for the extension
+		if not archive_cmd then
+    		notify_error("Unsupported file extension", "error")
+    		return
+		end
+
 		-- 7z needs to know tar archive to delete after compression
 		if archive_compress_args[3] == "-sdel" then
 			table.insert(archive_compress_args, output_name)
@@ -185,12 +218,6 @@ return {
 		-- Check if archive command has multiple names
 		if type(archive_cmd) == "table" then
 			archive_cmd = find_binary(archive_cmd)
-		end
-
-		-- Check if no archive command is available for the extension
-		if not archive_cmd then
-			notify_error("Unsupported file extension", "error")
-			return
 		end
 
 		-- Exit if archive command is not available
@@ -240,7 +267,7 @@ return {
 				cmd_level = archive_level_arg .. output_level
 			end
 			-- Decide if level will be used for compression command or archive command
-			if archive_compress == "" then
+			if archive_compress == "" and cmd_level ~= "" then
 				table.insert(archive_args, cmd_level)
 			else
 				table.insert(archive_compress_args, cmd_level)
