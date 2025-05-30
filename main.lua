@@ -1,3 +1,8 @@
+-- Check for windows
+local is_windows = ya.target_family() == "windows"
+-- Define flags
+local is_password, is_encrypted, is_level = false, false, false
+
 -- Send error notification
 local function notify_error(message, urgency)
 	ya.notify({
@@ -7,9 +12,6 @@ local function notify_error(message, urgency)
 		timeout = 5,
 	})
 end
-
--- Check for windows
-local is_windows = ya.target_family() == "windows"
 
 -- Make table of selected or hovered: path = filenames
 local selected_or_hovered = ya.sync(function()
@@ -77,7 +79,14 @@ local function combine_url(path, file)
 end
 
 return {
-	entry = function()
+	entry = function(_, job)
+		-- Check if password is needed. Search for char in arguments string
+		if job.args[1] ~= nil then
+			is_password = string.find(tostring(job.args[1]), "p") ~= nil
+			is_encrypted = string.find(tostring(job.args[1]), "h") ~= nil
+			is_level = string.find(tostring(job.args[1]), "l") ~= nil
+		end
+
 		-- Exit visual mode
 		ya.manager_emit("escape", { visual = true })
 
@@ -95,50 +104,72 @@ return {
 
 		-- Use appropriate archive command
 		local archive_commands = {
-			["%.zip$"] = { command = "zip", args = { "-r" } },
-			["%.7z$"] = { command = { "7z", "7zz" }, args = { "a" } },
-			["%.tar.gz$"] = { command = "tar", args = { "rpf" }, compress = "gzip" },
-			["%.tar.xz$"] = { command = "tar", args = { "rpf" }, compress = "xz" },
-			["%.tar.bz2$"] = { command = "tar", args = { "rpf" }, compress = "bzip2" },
-			["%.tar.zst$"] = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
-			["%.tar$"] = { command = "tar", args = { "rpf" } },
-		}
-
-		if is_windows then
-			archive_commands = {
-				["%.zip$"] = { command = "7z", args = { "a", "-tzip" } },
-				["%.7z$"] = { command = "7z", args = { "a" } },
-				["%.tar.gz$"] = {
+			["%.zip$"] = {
+				unix = { command = "zip", args = { "-r" }, level_arg = "-", passwordable = true },
+				windows = { command = "7z", args = { "a", "-tzip" } },
+			},
+			["%.7z$"] = {
+				unix = { command = { "7z", "7zz" }, args = { "a" }, level_arg = "-mx=", header_arg = "-mhe=on", passwordable = true },
+				windows = { command = "7z", args = { "a" } },
+			},
+			["%.tar.gz$"] = {
+				unix = { command = "tar", args = { "rpf" }, level_arg = "-", compress = "gzip" },
+				windows = {
 					command = "tar",
 					args = { "rpf" },
 					compress = "7z",
 					compress_args = { "a", "-tgzip", "-sdel", output_name },
 				},
-				["%.tar.xz$"] = {
+			},
+			["%.tar.xz$"] = {
+				unix = { command = "tar", args = { "rpf" }, level_arg = "-", compress = "xz" },
+				windows = {
 					command = "tar",
 					args = { "rpf" },
 					compress = "7z",
 					compress_args = { "a", "-txz", "-sdel", output_name },
 				},
-				["%.tar.bz2$"] = {
+			},
+			["%.tar.bz2$"] = {
+				unix = { command = "tar", args = { "rpf" }, level_arg = "-", compress = "bzip2" },
+				windows = {
 					command = "tar",
 					args = { "rpf" },
 					compress = "7z",
 					compress_args = { "a", "-tbzip2", "-sdel", output_name },
 				},
-				["%.tar.zst$"] = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
-				["%.tar$"] = { command = "tar", args = { "rpf" } },
-			}
-		end
+			},
+			["%.tar.zst$"] = {
+				unix = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
+				windows = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
+			},
+			["%.tar$"] = {
+				unix = { command = "tar", args = { "rpf" } },
+				windows = { command = "tar", args = { "rpf" } },
+			},
+		}
 
 		-- Match user input to archive command
-		local archive_cmd, archive_args, archive_compress, archive_compress_args
+		local archive_cmd, archive_args, archive_compress, archive_level_arg, archive_header_arg, archive_passwordable, archive_compress_args
 		for pattern, cmd_pair in pairs(archive_commands) do
 			if output_name:match(pattern) then
-				archive_cmd = cmd_pair.command
-				archive_args = cmd_pair.args
-				archive_compress = cmd_pair.compress
-				archive_compress_args = cmd_pair.compress_args or {}
+				if is_windows then
+					archive_cmd = cmd_pair.windows.command
+					archive_args = cmd_pair.windows.args
+					archive_compress = cmd_pair.windows.compress or ""
+					archive_level_arg = is_level and cmd_pair.windows.level_arg or ""
+					archive_header_arg = is_encrypted and cmd_pair.windows.header_arg or ""
+					archive_passwordable = cmd_pair.windows.passwordable or false
+					archive_compress_args = cmd_pair.windows.compress_args or {}
+				else
+					archive_cmd = cmd_pair.unix.command
+					archive_args = cmd_pair.unix.args
+					archive_compress = cmd_pair.unix.compress or ""
+					archive_level_arg = is_level and cmd_pair.unix.level_arg or ""
+					archive_header_arg = is_encrypted and cmd_pair.unix.header_arg or ""
+					archive_passwordable = cmd_pair.unix.passwordable or false
+					archive_compress_args = cmd_pair.unix.compress_args or {}
+				end
 			end
 		end
 
@@ -147,9 +178,9 @@ return {
 			archive_cmd = find_binary(archive_cmd)
 		end
 
-		-- Check if no archive command is available for the extention
+		-- Check if no archive command is available for the extension
 		if not archive_cmd then
-			notify_error("Unsupported file extention", "error")
+			notify_error("Unsupported file extension", "error")
 			return
 		end
 
@@ -192,10 +223,49 @@ return {
 			end
 		end
 
+		-- Get password if selected
+		local cmd_password = ""
+		if archive_passwordable and is_password then
+			local output_password, event = ya.input({
+				title = "Enter password:",
+				obscure = true,
+				position = { "top-center", y = 3, w = 40 },
+			})
+			if event ~= 1 then
+				return
+			end
+			if output_password ~= "" then
+				cmd_password = "-P" .. output_password
+			end
+		end
+
+		-- Get level if selected
+		local cmd_level = ""
+		-- final command arguments for compression and archive
+		local archive_additional_args = { cmd_password, cmd_level, archive_header_arg}
+		local compress_additional_args = { output_name }
+		if archive_level_arg ~= "" and is_level then
+			local output_level, event = ya.input({
+				title = "Enter compression level (0 - 9):",
+				position = { "top-center", y = 3, w = 40 },
+			})
+			if event ~= 1 then
+				return
+			end
+			-- Make sure this string is a single digit. False if using tar & compression level is 0 (defeats the purpose of using compression).
+			if output_level ~= "" and tonumber(output_level) ~= nil and string.len(output_level) == 1 and not ( archive_cmd == "tar" and output_level == "0" ) then
+				cmd_level = archive_level_arg .. output_level
+			end
+			-- Decide if level will be used for comrpession command or archive command
+			if cmd_level ~= "" and archive_level_arg ~= "" and archive_compress ~= "" then
+				compress_additional_args = { cmd_level, output_name}
+			end
+		end
+
 		-- Add to output archive in each path, their respective files
 		for path, names in pairs(path_fnames) do
-			local archive_status, archive_err =
-				Command(archive_cmd):arg(archive_args):arg(output_url):arg(names):cwd(path):spawn():wait()
+			local archive_status, archive_err = 
+			Command(archive_cmd):arg(archive_args):arg(output_url):arg(names):arg(archive_additional_args):cwd(path):spawn():wait()
 			if not archive_status or not archive_status.success then
 				notify_error(
 					string.format(
@@ -209,19 +279,19 @@ return {
 		end
 
 		-- Use compress command if needed
-		if archive_compress then
+		if archive_compress ~= "" then
 			local compress_status, compress_err =
-				Command(archive_compress):arg(archive_compress_args):arg(output_name):cwd(output_dir):spawn():wait()
-			if not compress_status or not compress_status.success then
-				notify_error(
-					string.format(
-						"%s with %s failed, exit code %s",
-						archive_compress,
-						output_name,
-						compress_status and compress_status.code or compress_err
-					),
-					"error"
-				)
+				Command(archive_compress):arg(archive_compress_args):arg(compress_additional_args):cwd(output_dir):spawn():wait()
+					if not compress_status or not compress_status.success then
+						notify_error(
+						string.format(
+							"%s with %s failed, exit code %s",
+							archive_compress,
+							output_name,
+							compress_status and compress_status.code or compress_err
+						),
+						"error"
+					)
 			end
 		end
 	end,

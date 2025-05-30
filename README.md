@@ -1,6 +1,6 @@
 # ~~archive.yazi~~ compress.yazi
 
-A Yazi plugin that compresses selected files to an archive. Supporting yazi versions 0.2.5 and up.
+A Yazi plugin that compresses selected files to an archive. Supporting yazi v25.5.28.
 
 ## Supported file types
 
@@ -28,7 +28,7 @@ git clone https://github.com/KKV9/compress.yazi.git ~/.config/yazi/plugins/compr
 git clone https://github.com/KKV9/compress.yazi.git %AppData%\yazi\config\plugins\compress.yazi
 
 # Or with yazi plugin manager
-ya pack -a KKV9/compress
+ya pkg add KKV9/compress
 ```
 
 - Add this to your `keymap.toml`:
@@ -38,6 +38,22 @@ ya pack -a KKV9/compress
 on   = [ "c", "a" ]
 run  = "plugin compress"
 desc = "Archive selected files"
+[[mgr.prepend_keymap]]
+on   = [ "c", "p" ]
+run  = "plugin compress -p"
+desc = "Archive selected files (password)"
+[[mgr.prepend_keymap]]
+on   = [ "c", "h" ]
+run  = "plugin compress -ph"
+desc = "Archive selected files (password+header)"
+[[mgr.prepend_keymap]]
+on   = [ "c", "l" ]
+run  = "plugin compress -l"
+desc = "Archive selected files (compression level)"
+[[mgr.prepend_keymap]]
+on   = [ "c", "u" ]
+run  = "plugin compress -phl"
+desc = "Archive selected files (password+header+level)"
 ```
 
 ## Usage
@@ -46,3 +62,10 @@ desc = "Archive selected files"
  - Type a name for the new file. 
  - The file extention must match one of the supported filetype extentions.
  - The desired archive/compression command must be installed on your system.
+
+## Flags
+
+ - Combine flags for more functionality. Currently unix only -- Untested on windows.
+ - -p allows you to set a password (7z and zip only)
+ - -h allows you to encrypt header (7z only)
+ - -l allows you to set a compression level (0 - 9) -- 0 = Store, 9 = Best compression
