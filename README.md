@@ -6,6 +6,21 @@
 
 ---
 
+## 📖 Table of Contents
+
+- [Features](#-features)
+- [Supported File Types](#-supported-file-types)
+- [Installation](#-installation)
+  - [Unix](#unix)
+  - [Windows](#windows)
+- [Extras (Windows)](#-extras-windows)
+- [Keymap Example](#-keymap-example)
+- [Usage](#-usage)
+- [Troubleshooting](#-troubleshooting)
+- [Credits](#-credits)
+
+---
+
 ## 🚀 Features
 
 - 🗂️ **Multi-format support:** zip, 7z, rar, tar, tar.gz, tar.xz, tar.bz2, tar.zst, tar.lz4, tar.lha
