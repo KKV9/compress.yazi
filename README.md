@@ -13,8 +13,9 @@
 - [Installation](#%EF%B8%8F-installation)
 - [Extras (Windows)](#-extras-windows)
 - [Keymap Example](#-keymap-example)
-- [Usage](#-usage)
-- [Troubleshooting](#-troubleshooting)
+- [Usage](#%EF%B8%8F-usage)
+- [Flags](#%EF%B8%8F-flags)
+- [Tips](#-tips)
 - [Credits](#-credits)
 
 ---
