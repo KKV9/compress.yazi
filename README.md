@@ -8,31 +8,30 @@
 
 ## 🚀 Features
 
-- **Multi-format support:** zip, 7z, rar, tar, tar.gz, tar.xz, tar.bz2, tar.zst, tar.lz4, tar.lha
-- **Cross-platform:** Works on Unix & Windows (with 7-Zip)
-- **Maximum Compatibility:** Uses native Unix & Windows tools (tar, zip, gz, xz)
-- **Password protection:** Secure your archives (zip/7z/rar)
-- **Header encryption:** Hide file lists (7z/rar)
-- **Compression level:** Choose your balance of speed vs. size
-- **Overwrite safety:** Never lose files by accident
-- **Seamless Yazi integration:** Fast, native-like UX
+- 🗂️ **Multi-format support:** zip, 7z, rar, tar, tar.gz, tar.xz, tar.bz2, tar.zst, tar.lz4, tar.lha
+- 🌍 **Cross-platform:** Works on Unix & Windows (with 7-Zip)
+- 🔒 **Password protection:** Secure your archives (zip/7z/rar)
+- 🛡️ **Header encryption:** Hide file lists (7z/rar)
+- ⚡ **Compression level:** Choose your balance of speed vs. size
+- 🛑 **Overwrite safety:** Never lose files by accident
+- 🎯 **Seamless Yazi integration:** Fast, native-like UX
 
 ---
 
 ## 📦 Supported File Types
 
-| Extension     | Default Command | 7z Command     | Bsdtar Command (Win10+ & Unix) |
-| ------------- | --------------- | -------------- | ------------------------------ |
-| `.zip`        | `zip -r`        | `7z a -tzip`   | `tar -caf`(No password)        |
-| `.7z`         | `7z a`          |                |                                |
-| `.rar`        | `rar a`         |                |                                |
-| `.tar`        | `tar rpf`       |                |                                |
-| `.tar.gz`     | `gzip`          | `7z a -tgzip`  | `tar -czf`                     |
-| `.tar.xz`     | `xz`            | `7z a -txz`    | `tar -cJf`                     |
-| `.tar.bz2`    | `bzip2`         | `7z a -tbzip2` | `tar -cjf`                     |
-| `.tar.zst`    | `zstd`          |                | `tar --zstd -cf`               |
-| `.tar.lz4`    | `lz4`           |                |                                |
-| `.tar.lha`    | `lha`           |                |                                |
+| Extension     | Default Command   | 7z Command     | Bsdtar Command (Win10+ & Unix) |
+| ------------- | ----------------- | -------------- | ------------------------------ |
+| `.zip`        | `zip -r`          | `7z a -tzip`   | `tar -caf`                     |
+| `.7z`         | `7z a`            | `7z a`         |                                |
+| `.rar`        | `rar a`           |                |                                |
+| `.tar`        | `tar rpf`         |                | `tar rpf`                      |
+| `.tar.gz`     | `tar rpf + gzip`  | `7z a -tgzip`  | `tar -czf`                     |
+| `.tar.xz`     | `tar rpf + xz`    | `7z a -txz`    | `tar -cJf`                     |
+| `.tar.bz2`    | `tar rpf + bzip2` | `7z a -tbzip2` | `tar -cjf`                     |
+| `.tar.zst`    | `tar rpf + zstd`  |                | `tar --zstd -cf`               |
+| `.tar.lz4`    | `tar rpf + lz4`   |                |                                |
+| `.tar.lha`    | `tar rpf + lha`   |                |                                |
 
 ---
 
@@ -49,19 +48,32 @@ git clone https://github.com/KKV9/compress.yazi.git %AppData%\yazi\config\plugin
 ya pkg add KKV9/compress
 ```
 
-> **Extras:**  
-> On Windows, install [7-Zip](https://www.7-zip.org/) and add `C:\Program Files\7-Zip` to your `PATH`.  
-> Or install [Nanazip](https://github.com/M2Team/NanaZip).
-> This will allow you to compress 7z and create password protected zip archives.  
-> install [WinRAR](https://www.win-rar.com/download.html) and add `C:\Program Files\WinRAR` to your `PATH`
-> This will allow you to compress rar.
-> lha, lz4, gzip etc. can also be installed and used on windows.
+---
+
+### 🔧 Extras (Windows)
+
+To enable additional compression formats and features on Windows, follow these steps:
+
+1. **Install [7-Zip](https://www.7-zip.org/):**  
+   Add `C:\Program Files\7-Zip` to your `PATH`.  
+   This enables support for `.7z` archives and password-protected `.zip` files.
+
+2. **Optional: Install [Nanazip](https://github.com/M2Team/NanaZip):**  
+   A modern alternative to 7-Zip with similar functionality.
+
+3. **Install [WinRAR](https://www.win-rar.com/download.html):**  
+   Add `C:\Program Files\WinRAR` to your `PATH`.  
+   This enables support for `.rar` archives.
+
+4. **Install Additional Tools:**  
+   To use formats like `lha`, `lz4`, `gzip`, etc., install their respective tools and ensure they are added to your `PATH`.
 
 ---
 
 ## 🎹 Keymap Example
 
 Add this to your `keymap.toml`:
+
 
 ```toml
 [[mgr.prepend_keymap]]
@@ -89,6 +101,14 @@ on   = [ "c", "a", "u" ]
 run  = "plugin compress -phl"
 desc = "Archive selected files (password+header+level)"
 ```
+
+| Shortcut       | Action                                |
+| -------------- | ------------------------------------- |
+| `c + a + a`    | Archive selected files                |
+| `c + a + p`    | Archive with password protection      |
+| `c + a + h`    | Archive with password + header        |
+| `c + a + l`    | Archive with custom compression level |
+| `c + a + u`    | Archive with all options enabled      |
 
 ---
 
@@ -129,5 +149,6 @@ desc = "Archive selected files (password+header+level)"
 ## 📣 Credits
 
 Made with ❤️ for [Yazi](https://github.com/sxyazi/yazi) by [KKV9](https://github.com/KKV9).
+Contributions are welcome! Feel free to submit a pull request.
 
 ---
