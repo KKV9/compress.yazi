@@ -10,9 +10,7 @@
 
 - [Features](#-features)
 - [Supported File Types](#-supported-file-types)
-- [Installation](#-installation)
-  - [Unix](#unix)
-  - [Windows](#windows)
+- [Installation](#%EF%B8%8F-installation)
 - [Extras (Windows)](#-extras-windows)
 - [Keymap Example](#-keymap-example)
 - [Usage](#-usage)
