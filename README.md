@@ -8,10 +8,11 @@
 
 ## 🚀 Features
 
-- **Multi-format support:** zip, 7z, tar, tar.gz, tar.xz, tar.bz2, tar.zst
+- **Multi-format support:** zip, 7z, rar, tar, tar.gz, tar.xz, tar.bz2, tar.zst, tar.lz4, tar.lha
 - **Cross-platform:** Works on Unix & Windows (with 7-Zip)
-- **Password protection:** Secure your archives (zip/7z)
-- **Header encryption:** Hide file lists (7z)
+- **Maximum Compatibility:** Uses native Unix & Windows tools (tar, zip, gz, xz)
+- **Password protection:** Secure your archives (zip/7z/rar)
+- **Header encryption:** Hide file lists (7z/rar)
 - **Compression level:** Choose your balance of speed vs. size
 - **Overwrite safety:** Never lose files by accident
 - **Seamless Yazi integration:** Fast, native-like UX
@@ -24,11 +25,14 @@
 | ------------- | ------------- | --------------- |
 | `.zip`        | `zip -r`      | `7z a -tzip`    |
 | `.7z`         | `7z a`        | `7z a`          |
+| `.rar`        | `rar a`       | `rar a`         |
 | `.tar`        | `tar rpf`     | `tar rpf`       |
 | `.tar.gz`     | `gzip`        | `7z a -tgzip`   |
 | `.tar.xz`     | `xz`          | `7z a -txz`     |
 | `.tar.bz2`    | `bzip2`       | `7z a -tbzip2`  |
 | `.tar.zst`    | `zstd`        | `zstd`          |
+| `.tar.lz4`    | `lz4`         | `lz4`           |
+| `.tar.lha`    | `lha`         | `lha`           |
 
 > **Note:**  
 > On Windows, install [7-Zip](https://www.7-zip.org/) and add `7z.exe` to your `PATH`.  
@@ -92,8 +96,8 @@ desc = "Archive selected files (password+header+level)"
 3. Choose:
    - <kbd>a</kbd> for a standard archive
    - <kbd>p</kbd> for password protection (zip/7z)
-   - <kbd>h</kbd> to encrypt header (7z)
-   - <kbd>l</kbd> to set compression level (0-9)
+   - <kbd>h</kbd> to encrypt header (7z/rar)
+   - <kbd>l</kbd> to set compression level (all compression algorithims)
    - <kbd>u</kbd> for all options
 4. **Type a name** for your archive (must match a supported extension).
 5. **Enter password** and/or **compression level** if prompted.
@@ -105,19 +109,16 @@ desc = "Archive selected files (password+header+level)"
 ## 🏳️‍🌈 Flags
 
 - Combine flags for more power!
-- `-p` Password protect (zip/7z)
-- `-h` Encrypt header (7z)
-- `-l` Set compression level (0-9, except zstd)
-
-> **Tip:**  
-> Compression level works for all except zstd.
+- `-p` Password protect (zip/7z/rar)
+- `-h` Encrypt header (7z/rar)
+- `-l` Set compression level (all compression algorithims)
 
 ---
 
 ## 💡 Tips
 
 - The file extension **must** match a supported type.
-- The required compression tool **must** be installed and in your `PATH`.
+- The required compression tool **must** be installed and in your `PATH` (7zip/rar etc.).
 - Overwrite prompt: Type `y` to overwrite, `n` or <kbd>Enter</kbd> to cancel.
 
 ---

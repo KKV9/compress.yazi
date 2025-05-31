@@ -116,46 +116,64 @@ end)
 -- Table of archive commands
 local archive_commands = {
 	["%.zip$"] = {
-		unix = { command = "zip", args = { "-r" }, level_arg = "-", passwordable = true },
-		windows = { command = "7z", args = { "a", "-tzip" }, level_arg = "-mx=", passwordable = true },
+		unix = { command = "zip", args = { "-r" }, level_arg = "-", level_min = 0, level_max = 9, passwordable = true },
+		windows = { command = "7z", args = { "a", "-tzip" }, level_arg = "-mx=", level_min = 0, level_max = 9, passwordable = true },
 	},
 	["%.7z$"] = {
-		unix = { command = { "7z", "7zz" }, args = { "a" }, level_arg = "-mx=", header_arg = "-mhe=on", passwordable = true },
-		windows = { command = "7z", args = { "a" }, level_arg = "-mx=", header_arg = "-mhe=on", passwordable = true },
+		unix = { command = { "7z", "7zz" }, args = { "a" }, level_arg = "-mx=", level_min = 0, level_max = 9, header_arg = "-mhe=on", passwordable = true },
+		windows = { command = "7z", args = { "a" }, level_arg = "-mx=", level_min = 0, level_max = 9, header_arg = "-mhe=on",  passwordable = true },
+	},
+	["%.rar$"] = {
+		unix = { command = "rar", args = { "a" }, level_arg = "-m", level_min = 0, level_max = 5, header_arg = "-hp",  passwordable = true },
+		windows = { command = "rar", args = { "a" }, level_arg = "-m", level_min = 0, level_max = 5, header_arg = "-hp",  passwordable = true },
 	},
 	["%.tar.gz$"] = {
-		unix = { command = "tar", args = { "rpf" }, level_arg = "-", compress = "gzip" },
+		unix = { command = "tar", args = { "rpf" }, level_arg = "-", level_min = 1, level_max = 9, compress = "gzip" },
 		windows = {
 			command = "tar",
 			args = { "rpf" },
 			level_arg = "-mx=",
+			level_min = 1,
+			level_max = 9,
 			compress = "7z",
 			compress_args = { "a", "-tgzip", "-sdel" },
 		},
 	},
 	["%.tar.xz$"] = {
-		unix = { command = "tar", args = { "rpf" }, level_arg = "-", compress = "xz" },
+		unix = { command = "tar", args = { "rpf" }, level_arg = "-", level_min = 1, level_max = 9, compress = "xz" },
 		windows = {
 			command = "tar",
 			args = { "rpf" },
 			level_arg = "-mx=",
+			level_min = 1,
+			level_max = 9,
 			compress = "7z",
 			compress_args = { "a", "-txz", "-sdel" },
 		},
 	},
 	["%.tar.bz2$"] = {
-		unix = { command = "tar", args = { "rpf" }, level_arg = "-", compress = "bzip2" },
+		unix = { command = "tar", args = { "rpf" }, level_arg = "-", level_min = 1, level_max = 9, compress = "bzip2" },
 		windows = {
 			command = "tar",
 			args = { "rpf" },
 			level_arg = "-mx=",
+			level_min = 1,
+			level_max = 9,
 			compress = "7z",
 			compress_args = { "a", "-tbzip2", "-sdel" },
 		},
 	},
 	["%.tar.zst$"] = {
-		unix = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
-		windows = { command = "tar", args = { "rpf" }, compress = "zstd", compress_args = { "--rm" } },
+		unix = { command = "tar", args = { "rpf" }, level_arg = "-", level_min = 1, level_max = 19, compress = "zstd", compress_args = { "--rm" } },
+		windows = { command = "tar", args = { "rpf" }, level_arg = "-", level_min = 1, level_max = 19, compress = "zstd", compress_args = { "--rm" } },
+	},
+	["%.tar.lz4$"] = {
+		unix = { command = "tar", args = { "rpf" }, level_arg = "-", level_min = 1, level_max = 12, compress = "lz4", compress_args = { "--rm" } },
+		windows = { command = "tar", args = { "rpf" }, level_arg = "-", level_min = 1, level_max = 12, compress = "lz4", compress_args = { "--rm" } },
+	},
+	["%.tar.lha$"] = {
+		unix = { command = "tar", args = { "rpf" }, level_arg = "-o", level_min = 5, level_max = 7, compress = "lha", compress_args = { "-ad" } },
+		windows = { command = "tar", args = { "rpf" }, level_arg = "-o", level_min = 5, level_max = 7, compress = "lha", compress_args = { "-ad" } },
 	},
 	["%.tar$"] = {
 		unix = { command = "tar", args = { "rpf" } },
@@ -187,10 +205,10 @@ return {
 		if not is_valid_filename(output_name) then
 			notify_error("Invalid archive filename", "error")
 			return
-		end
+		end	
 
 		-- Match user input to archive command
-		local archive_cmd, archive_args, archive_compress, archive_level_arg, archive_header_arg, archive_passwordable, archive_compress_args
+		local archive_cmd, archive_args, archive_compress, archive_level_arg, archive_level_min, archive_level_max, archive_header_arg, archive_passwordable, archive_compress_args
 		for pattern, cmd_pair in pairs(archive_commands) do
 			if output_name:match(pattern) then
 				local os_cmd = is_windows and cmd_pair.windows or cmd_pair.unix
@@ -198,6 +216,8 @@ return {
 				archive_args = os_cmd.args
 				archive_compress = os_cmd.compress or ""
 				archive_level_arg = is_level and os_cmd.level_arg or ""
+				archive_level_min = os_cmd.level_min
+				archive_level_max = os_cmd.level_max
 				archive_header_arg = is_encrypted and os_cmd.header_arg or ""
 				archive_passwordable = os_cmd.passwordable or false
 				archive_compress_args = os_cmd.compress_args or {}
@@ -210,8 +230,8 @@ return {
     		return
 		end
 
-		-- 7z needs to know tar archive to delete after compression
-		if archive_compress_args[3] == "-sdel" then
+		-- Tar archive to delete after compression for 7z and lha
+		if archive_compress_args[3] == "-sdel" or archive_compress_args[1] == "-ad" then
 			table.insert(archive_compress_args, output_name)
 		end
 
@@ -244,33 +264,38 @@ return {
 			end
 			if output_password ~= "" then
 				cmd_password = "-P" .. output_password
+				if archive_cmd == "rar" and is_encrypted then
+					cmd_password = archive_header_arg .. output_password
+				end
 				table.insert(archive_args, cmd_password)
 			end
 		end
 
 		-- Add header arg if selected
-		if is_encrypted and archive_header_arg ~= "" then
+		if is_encrypted and archive_header_arg ~= "" and archive_cmd ~= "rar" then
 			table.insert(archive_args, archive_header_arg)
 		end
 
 		-- Add level arg if selected
 		if archive_level_arg ~= "" and is_level then
 			local output_level, event = ya.input({
-				title = "Enter compression level (0 - 9):",
+				title = string.format("Enter compression level (%s - %s)", archive_level_min, archive_level_max),
 				position = { "top-center", y = 3, w = 40 },
 			})
 			if event ~= 1 then
 				return
 			end
-			-- Make sure this string is a single digit. False if using tar & compression level is 0 (defeats the purpose of using compression).
-			if output_level ~= "" and tonumber(output_level) ~= nil and string.len(output_level) == 1 and not ( archive_cmd == "tar" and output_level == "0" ) then
+			-- Make sure this string is a number within the range allowed by the algorithim
+			if output_level ~= "" and tonumber(output_level) ~= nil and tonumber(output_level) >= archive_level_min and tonumber(output_level) <= archive_level_max then
 				cmd_level = archive_level_arg .. output_level
-			end
-			-- Decide if level will be used for compression command or archive command
-			if archive_compress == "" and cmd_level ~= "" then
-				table.insert(archive_args, cmd_level)
+				-- Level argument will be used for compression command or archive command
+				if archive_compress == "" then
+					table.insert(archive_args, cmd_level)
+				else
+					table.insert(archive_compress_args, cmd_level)
+				end
 			else
-				table.insert(archive_compress_args, cmd_level)
+				notify_error("Invalid level specified. Using defaults.", "warn")
 			end
 		end
 
