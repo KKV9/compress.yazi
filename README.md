@@ -21,23 +21,18 @@
 
 ## 📦 Supported File Types
 
-| Extension     | Unix Command  | Windows Command |
-| ------------- | ------------- | --------------- |
-| `.zip`        | `zip -r`      | `7z a -tzip`    |
-| `.7z`         | `7z a`        | `7z a`          |
-| `.rar`        | `rar a`       | `rar a`         |
-| `.tar`        | `tar rpf`     | `tar rpf`       |
-| `.tar.gz`     | `gzip`        | `7z a -tgzip`   |
-| `.tar.xz`     | `xz`          | `7z a -txz`     |
-| `.tar.bz2`    | `bzip2`       | `7z a -tbzip2`  |
-| `.tar.zst`    | `zstd`        | `zstd`          |
-| `.tar.lz4`    | `lz4`         | `lz4`           |
-| `.tar.lha`    | `lha`         | `lha`           |
-
-> **Note:**  
-> On Windows, install [7-Zip](https://www.7-zip.org/) and add `7z.exe` to your `PATH`.  
-> Only tar archives are available otherwise.  
-> Alternatively, try [Nanazip](https://github.com/M2Team/NanaZip).
+| Extension     | Default Command | 7z Command     | Bsdtar Command (Win10+ & Unix) |
+| ------------- | --------------- | -------------- | ------------------------------ |
+| `.zip`        | `zip -r`        | `7z a -tzip`   | `tar -caf`(No password)        |
+| `.7z`         | `7z a`          |                |                                |
+| `.rar`        | `rar a`         |                |                                |
+| `.tar`        | `tar rpf`       |                |                                |
+| `.tar.gz`     | `gzip`          | `7z a -tgzip`  | `tar -czf`                     |
+| `.tar.xz`     | `xz`            | `7z a -txz`    | `tar -cJf`                     |
+| `.tar.bz2`    | `bzip2`         | `7z a -tbzip2` | `tar -cjf`                     |
+| `.tar.zst`    | `zstd`          |                | `tar --zstd -cf`               |
+| `.tar.lz4`    | `lz4`           |                |                                |
+| `.tar.lha`    | `lha`           |                |                                |
 
 ---
 
@@ -53,6 +48,14 @@ git clone https://github.com/KKV9/compress.yazi.git %AppData%\yazi\config\plugin
 # Or with yazi plugin manager
 ya pkg add KKV9/compress
 ```
+
+> **Extras:**  
+> On Windows, install [7-Zip](https://www.7-zip.org/) and add `C:\Program Files\7-Zip` to your `PATH`.  
+> Or install [Nanazip](https://github.com/M2Team/NanaZip).
+> This will allow you to compress 7z and create password protected zip archives.  
+> install [WinRAR](https://www.win-rar.com/download.html) and add `C:\Program Files\WinRAR` to your `PATH`
+> This will allow you to compress rar.
+> lha, lz4, gzip etc. can also be installed and used on windows.
 
 ---
 
@@ -95,7 +98,7 @@ desc = "Archive selected files (password+header+level)"
 2. Press <kbd>c</kbd> <kbd>a</kbd> to open the archive dialog.
 3. Choose:
    - <kbd>a</kbd> for a standard archive
-   - <kbd>p</kbd> for password protection (zip/7z)
+   - <kbd>p</kbd> for password protection (zip/7z/rar)
    - <kbd>h</kbd> to encrypt header (7z/rar)
    - <kbd>l</kbd> to set compression level (all compression algorithims)
    - <kbd>u</kbd> for all options
