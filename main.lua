@@ -410,6 +410,7 @@ return {
 
         -- Define the temporary output file path within the temporary directory
         local temp_output_url = combine_url(temp_dir, output_name)
+        local ok, err
 
         -- Add files to the output archive
         for filepath, filenames in pairs(path_fnames) do
@@ -419,7 +420,10 @@ return {
             if not archive_status or not archive_status.success then
                 -- Notify the user if the archiving process fails and clean up the temporary directory
                 notify_error(string.format("Failed to create archive %s with '%s', error: %s", output_name, archive_cmd, archive_err), "error")
-                fs.remove("dir_all", Url(temp_dir))
+                local cleanup_status, cleanup_err = fs.remove("dir_all", Url(temp_dir))
+                if not cleanup_status then
+                    notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
+                end
                 return
             end
         end
@@ -431,7 +435,10 @@ return {
             if not compress_status or not compress_status.success then
                 -- Notify the user if the compression process fails and clean up the temporary directory
                 notify_error(string.format("Failed to compress archive %s with '%s', error: %s", output_name, archive_compress, compress_err), "error")
-                fs.remove("dir_all", Url(temp_dir))
+                local cleanup_status, cleanup_err = fs.remove("dir_all", Url(temp_dir))
+                if not cleanup_status then
+                    notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
+                end
                 return
             end
         end
@@ -443,11 +450,17 @@ return {
         if not move_status then
             -- Notify the user if the move operation fails and clean up the temporary directory
             notify_error(string.format("Failed to move %s to %s, error: %s", temp_url_processed, final_output_url, move_err), "error")
-            fs.remove("dir_all", Url(temp_dir))
+            local cleanup_status, cleanup_err = fs.remove("dir_all", Url(temp_dir))
+            if not cleanup_status then
+                notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
+            end
             return
         end
 
         -- Cleanup the temporary directory after successful operation
-        fs.remove("dir_all", Url(temp_dir))
+        local cleanup_status, cleanup_err = fs.remove("dir_all", Url("/"))
+        if not cleanup_status then
+            notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
+        end
     end
 }
