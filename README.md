@@ -130,7 +130,7 @@ desc = "Archive selected files (password+header+level)"
    - <kbd>u</kbd> for all options together
 4. **Type a name** for your archive (must match a supported extension).
 5. **Enter password** and/or **compression level** if prompted.
-6. **Confirm overwrite** if a file already exists.
+6. **Overwrite protect** if a file already exists, it will be given a suffix _#.
 7. Enjoy your shiny new archive!
 
 ---

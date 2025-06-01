@@ -15,35 +15,6 @@ local function is_valid_filename(name)
         if name:find('[<>:"/\\|%?%*]') then
             return false
         end
-        local reserved = {
-            "CON",
-            "PRN",
-            "AUX",
-            "NUL",
-            "COM1",
-            "COM2",
-            "COM3",
-            "COM4",
-            "COM5",
-            "COM6",
-            "COM7",
-            "COM8",
-            "COM9",
-            "LPT1",
-            "LPT2",
-            "LPT3",
-            "LPT4",
-            "LPT5",
-            "LPT6",
-            "LPT7",
-            "LPT8",
-            "LPT9"
-        }
-        for _, r in ipairs(reserved) do
-            if name:upper() == r or name:upper():match("^" .. r .. "%.") then
-                return false
-            end
-        end
     else
         -- Unix forbidden chars
         if name:find("/") or name:find("%z") then
@@ -82,7 +53,7 @@ local function is_command_available(cmd)
 end
 
 -- Function to change command arrays --> string -- Use first command available or first command
-local function find_binary(cmd_list)
+local function find_command_name(cmd_list)
     for _, cmd in ipairs(cmd_list) do
         if is_command_available(cmd) then
             return cmd
@@ -91,31 +62,10 @@ local function find_binary(cmd_list)
     return cmd_list[1] -- Return first command as fallback
 end
 
--- Function to check if a file exists
-local function file_exists(name)
-    local f = io.open(name, "r")
-    if f ~= nil then
-        io.close(f)
-        return true
-    else
-        return false
-    end
-end
-
 -- Function to append filename to it's parent directory url
 local function combine_url(path, file)
     path, file = Url(path), Url(file)
     return tostring(path:join(file))
-end
-
--- Function to display errors if a command goes wrong
-local function command_warning(command, status, error)
-    if not status or not status.success then
-        notify_error(
-            string.format("%s with selected files failed, exit code %s", command, status and status.code or error),
-            "error"
-        )
-    end
 end
 
 -- Function to make a table of selected or hovered files: path = filenames
@@ -146,7 +96,7 @@ local archive_commands = {
     ["%.zip$"] = {
         {command = "zip", args = {"-r"}, level_arg = "-", level_min = 0, level_max = 9, passwordable = true},
         {
-            command = {"7z", "7zz"},
+            command = {"7z", "7zz", "7za"},
             args = {"a", "-tzip"},
             level_arg = "-mx=",
             level_min = 0,
@@ -163,7 +113,7 @@ local archive_commands = {
     },
     ["%.7z$"] = {
         {
-            command = {"7z", "7zz"},
+            command = {"7z", "7zz", "7za"},
             args = {"a"},
             level_arg = "-mx=",
             level_min = 0,
@@ -192,7 +142,7 @@ local archive_commands = {
             level_min = 1,
             level_max = 9,
             compress = "7z",
-            compress_args = {"a", "-tgzip", "-sdel"}
+            compress_args = {"a", "-tgzip"}
         },
         {
             command = {"tar", "bsdtar"},
@@ -211,7 +161,7 @@ local archive_commands = {
             level_min = 1,
             level_max = 9,
             compress = "7z",
-            compress_args = {"a", "-txz", "-sdel"}
+            compress_args = {"a", "-txz"}
         },
         {
             command = {"tar", "bsdtar"},
@@ -230,7 +180,7 @@ local archive_commands = {
             level_min = 1,
             level_max = 9,
             compress = "7z",
-            compress_args = {"a", "-tbzip2", "-sdel"}
+            compress_args = {"a", "-tbzip2"}
         },
         {
             command = {"tar", "bsdtar"},
@@ -242,46 +192,38 @@ local archive_commands = {
     },
     ["%.tar.zst$"] = {
         {
-        	command = {"tar", "bsdtar"},
+            command = {"tar", "bsdtar"},
             args = {"rpf"},
             level_arg = "-",
             level_min = 1,
             level_max = 22,
             compress = "zstd",
-            compress_args = {"--ultra", "--rm"},
-            {
-                command = {"tar", "bsdtar"},
-                args = {"--zstd", "-cf"},
-                level_arg = {"--option", "zstd:compression-level="},
-                level_min = 1,
-                level_max = 22
-            }
-        },
-        ["%.tar.lz4$"] = {
-            {
-                command = {"tar", "bsdtar"},
-                args = {"rpf"},
-                level_arg = "-",
-                level_min = 1,
-                level_max = 12,
-                compress = "lz4",
-                compress_args = {"--rm"}
-            }
-        },
-        ["%.tar.lha$"] = {
-            {
-                command = {"tar", "bsdtar"},
-                args = {"rpf"},
-                level_arg = "-o",
-                level_min = 5,
-                level_max = 7,
-                compress = "lha",
-                compress_args = {"-ad"}
-            }
-        },
-        ["%.tar$"] = {
-            {command = {"tar", "bsdtar"}, args = {"rpf"}}
+            compress_args = {"--ultra"}
         }
+    },
+    ["%.tar.lz4$"] = {
+        {
+            command = {"tar", "bsdtar"},
+            args = {"rpf"},
+            level_arg = "-",
+            level_min = 1,
+            level_max = 12,
+            compress = "lz4"
+        }
+    },
+    ["%.tar.lha$"] = {
+        {
+            command = {"tar", "bsdtar"},
+            args = {"rpf"},
+            level_arg = "-o",
+            level_min = 5,
+            level_max = 7,
+            compress = "lha",
+            compress_args = {"-a"}
+        }
+    },
+    ["%.tar$"] = {
+        {command = {"tar", "bsdtar"}, args = {"rpf"}}
     }
 }
 
@@ -330,7 +272,7 @@ return {
                 matched_pattern = true -- Mark that file extention is correct
                 for _, cmd in ipairs(cmd_list) do
                     -- Check if archive_cmd is available
-                    local find_command = type(cmd.command) == "table" and find_binary(cmd.command) or cmd.command
+                    local find_command = type(cmd.command) == "table" and find_command_name(cmd.command) or cmd.command
                     if is_command_available(find_command) then
                         -- Check if compress_cmd (if listed) is available
                         if cmd.compress == nil or is_command_available(cmd.compress) then
@@ -365,14 +307,9 @@ return {
             return
         end
 
-        -- Tar archive to delete after compression for 7z and lha
-        if archive_compress_args[3] == "-sdel" or archive_compress_args[1] == "-ad" then
-            table.insert(archive_compress_args, output_name)
-        end
-
         -- Check if archive command has multiple names
         if type(archive_cmd) == "table" then
-            archive_cmd = find_binary(archive_cmd)
+            archive_cmd = find_command_name(archive_cmd)
         end
 
         -- Exit if archive command is not available
@@ -403,13 +340,13 @@ return {
             if output_password ~= "" then
                 cmd_password = "-P" .. output_password
                 if archive_cmd == "rar" and is_encrypted then
-                    cmd_password = archive_header_arg .. output_password
+                    cmd_password = archive_header_arg .. output_password -- Add archive arg for rar
                 end
                 table.insert(archive_args, cmd_password)
             end
         end
 
-        -- Add header arg if selected
+        -- Add header arg if selected for 7z
         if is_encrypted and archive_header_arg ~= "" and archive_cmd ~= "rar" then
             table.insert(archive_args, archive_header_arg)
         end
@@ -450,48 +387,67 @@ return {
             end
         end
 
-        -- If file exists show overwrite prompt
-        local output_url = combine_url(output_dir, output_name)
-        while true do
-            if file_exists(output_url) then
-                local overwrite_answer =
-                    ya.input(
-                    {
-                        title = "Overwrite " .. output_name .. "? y/N:",
-                        position = {"top-center", y = 3, w = 40}
-                    }
-                )
-                if overwrite_answer:lower() ~= "y" then
-                    notify_error("Operation canceled", "warn")
-                    return -- If no overwrite selected, exit
-                else
-                    local rm_status, rm_err = os.remove(output_url)
-                    if not rm_status then
-                        notify_error(string.format("Failed to remove %s, exit code %s", output_name, rm_err), "error")
-                        return
-                    end -- If overwrite fails, exit
-                end
-            end
-            if archive_compress ~= "" and not output_name:match("%.tar$") then
-                output_name = output_name:match("(.*%.tar)") -- Test for .tar and .tar.*
-                output_url = combine_url(output_dir, output_name) -- Update output_url
-            else
-                break
-            end
+        -- Store the original output name for later use
+        local original_name = output_name
+
+        -- If compression is needed, adjust the output name to exclude extensions like ".tar"
+        if archive_compress ~= "" then
+            output_name = output_name:match("(.*%.tar)") or output_name
         end
 
-        -- Add to output archive in each path, their respective files
+        -- Create a temporary directory for intermediate files
+        local temp_dir_name = ".tmp_compress"
+        local temp_dir = combine_url(output_dir, temp_dir_name)
+        local temp_dir, _ = tostring(fs.unique_name(Url(temp_dir)))
+
+        -- Attempt to create the temporary directory
+        local temp_dir_status, temp_dir_err = fs.create("dir_all", Url(temp_dir))
+        if not temp_dir_status then
+            -- Notify the user if the temporary directory creation fails
+            notify_error(string.format("Failed to create temp directory, error code: %s", temp_dir_err), "error")
+            return
+        end
+
+        -- Define the temporary output file path within the temporary directory
+        local temp_output_url = combine_url(temp_dir, output_name)
+
+        -- Add files to the output archive
         for filepath, filenames in pairs(path_fnames) do
+            -- Execute the archive command for each path and its respective files
             local archive_status, archive_err =
-                Command(archive_cmd):arg(archive_args):arg(output_url):arg(filenames):cwd(filepath):spawn():wait()
-            command_warning(archive_cmd, archive_status, archive_err)
+                Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(filepath):spawn():wait()
+            if not archive_status or not archive_status.success then
+                -- Notify the user if the archiving process fails and clean up the temporary directory
+                notify_error(string.format("Failed to create archive %s with '%s', error: %s", output_name, archive_cmd, archive_err), "error")
+                fs.remove("dir_all", Url(temp_dir))
+                return
+            end
         end
 
-        -- Use compress command if needed
+        -- If compression is required, execute the compression command
         if archive_compress ~= "" then
             local compress_status, compress_err =
-                Command(archive_compress):arg(archive_compress_args):arg(output_name):cwd(output_dir):spawn():wait()
-            command_warning(archive_compress, compress_status, compress_err)
+                Command(archive_compress):arg(archive_compress_args):arg(temp_output_url):spawn():wait()
+            if not compress_status or not compress_status.success then
+                -- Notify the user if the compression process fails and clean up the temporary directory
+                notify_error(string.format("Failed to compress archive %s with '%s', error: %s", output_name, archive_compress, compress_err), "error")
+                fs.remove("dir_all", Url(temp_dir))
+                return
+            end
         end
+
+        -- Move the final file from the temporary directory to the output directory
+        local final_output_url, temp_url_processed = combine_url(output_dir, original_name), combine_url(temp_dir, original_name)
+        final_output_url, _ = tostring(fs.unique_name(Url(final_output_url)))
+        local move_status, move_err = os.rename(temp_url_processed, final_output_url)
+        if not move_status then
+            -- Notify the user if the move operation fails and clean up the temporary directory
+            notify_error(string.format("Failed to move %s to %s, error: %s", temp_url_processed, final_output_url, move_err), "error")
+            fs.remove("dir_all", Url(temp_dir))
+            return
+        end
+
+        -- Cleanup the temporary directory after successful operation
+        fs.remove("dir_all", Url(temp_dir))
     end
 }
