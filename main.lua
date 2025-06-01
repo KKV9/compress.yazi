@@ -410,7 +410,6 @@ return {
 
         -- Define the temporary output file path within the temporary directory
         local temp_output_url = combine_url(temp_dir, output_name)
-        local ok, err
 
         -- Add files to the output archive
         for filepath, filenames in pairs(path_fnames) do
