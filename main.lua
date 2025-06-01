@@ -457,7 +457,7 @@ return {
         end
 
         -- Cleanup the temporary directory after successful operation
-        local cleanup_status, cleanup_err = fs.remove("dir_all", Url("/"))
+        local cleanup_status, cleanup_err = fs.remove("dir_all", Url(temp_dir))
         if not cleanup_status then
             notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
         end
