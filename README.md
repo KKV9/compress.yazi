@@ -23,7 +23,7 @@
 ## 🚀 Features
 
 - 🗂️ **Multi-format support:** zip, 7z, rar, tar, tar.gz, tar.xz, tar.bz2, tar.zst, tar.lz4, tar.lha
-- 🌍 **Cross-platform:** Works on Unix & Windows (with 7-Zip)
+- 🌍 **Cross-platform:** Works on Unix & Windows
 - 🔒 **Password protection:** Secure your archives (zip/7z/rar)
 - 🛡️ **Header encryption:** Hide file lists (7z/rar)
 - ⚡ **Compression level:** Choose your balance of speed vs. size
@@ -116,14 +116,6 @@ run  = "plugin compress -phl"
 desc = "Archive selected files (password+header+level)"
 ```
 
-| Shortcut       | Action                                |
-| -------------- | ------------------------------------- |
-| `c + a + a`    | Archive selected files                |
-| `c + a + p`    | Archive with password protection      |
-| `c + a + h`    | Archive with password + header        |
-| `c + a + l`    | Archive with custom compression level |
-| `c + a + u`    | Archive with all options enabled      |
-
 ---
 
 ## 🛠️ Usage
@@ -135,7 +127,7 @@ desc = "Archive selected files (password+header+level)"
    - <kbd>p</kbd> for password protection (zip/7z/rar)
    - <kbd>h</kbd> to encrypt header (7z/rar)
    - <kbd>l</kbd> to set compression level (all compression algorithims)
-   - <kbd>u</kbd> for all options
+   - <kbd>u</kbd> for all options together
 4. **Type a name** for your archive (must match a supported extension).
 5. **Enter password** and/or **compression level** if prompted.
 6. **Confirm overwrite** if a file already exists.
