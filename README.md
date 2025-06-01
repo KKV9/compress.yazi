@@ -11,7 +11,6 @@
 - [Features](#-features)
 - [Supported File Types](#-supported-file-types)
 - [Installation](#%EF%B8%8F-installation)
-- [Extras (Windows)](#-extras-windows)
 - [Keymap Example](#-keymap-example)
 - [Usage](#%EF%B8%8F-usage)
 - [Flags](#%EF%B8%8F-flags)
@@ -72,8 +71,8 @@ To enable additional compression formats and features on Windows, follow these s
    Add `C:\Program Files\7-Zip` to your `PATH`.  
    This enables support for `.7z` archives and password-protected `.zip` files.
 
-2. **Optional: Install [Nanazip](https://github.com/M2Team/NanaZip):**  
-   A modern alternative to 7-Zip with similar functionality.
+2. **Alternative: Install [Nanazip](https://github.com/M2Team/NanaZip):**  
+   A modern alternative to 7-Zip with similar functionality and extra features.
 
 3. **Install [WinRAR](https://www.win-rar.com/download.html):**  
    Add `C:\Program Files\WinRAR` to your `PATH`.  
@@ -130,7 +129,7 @@ desc = "Archive selected files (password+header+level)"
    - <kbd>u</kbd> for all options together
 4. **Type a name** for your archive (must match a supported extension).
 5. **Enter password** and/or **compression level** if prompted.
-6. **Overwrite protect** if a file already exists, it will be given a suffix _#.
+6. **Overwrite protect** if a file already exists, the new file will be given a suffix _#.
 7. Enjoy your shiny new archive!
 
 ---
@@ -148,7 +147,6 @@ desc = "Archive selected files (password+header+level)"
 
 - The file extension **must** match a supported type.
 - The required compression tool **must** be installed and in your `PATH` (7zip/rar etc.).
-- Overwrite prompt: Type `y` to overwrite, `n` or <kbd>Enter</kbd> to cancel.
 
 ---
 
