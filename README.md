@@ -113,11 +113,6 @@ desc = "Archive selected files (compression level)"
 on   = [ "c", "a", "u" ]
 run  = "plugin compress -phl"
 desc = "Archive selected files (password+header+level)"
-
-[[mgr.prepend_keymap]]
-on   = [ "c", "a", "7" ]
-run  = "plugin compress '-ph 7z'"
-desc = "Archive selected files to encrypted 7z"
 ```
 
 ---
@@ -147,6 +142,18 @@ desc = "Archive selected files to encrypted 7z"
 - `-h` Encrypt header (7z/rar)
 - `-l` Set compression level (all compression algorithims)
 - `<extention>` Specify a default extention (eg., `7z`, `tar.gz`)
+
+#### Combining multiple flags:
+```toml
+[[mgr.prepend_keymap]]
+on   = [ "c", "a", "7" ]
+run  = "plugin compress '-ph 7z'"
+desc = "Archive selected files to 7z (password+header)"
+[[mgr.prepend_keymap]]
+on   = [ "c", "a", "7" ]
+run  = "plugin compress '-p -l rar'"
+desc = "Archive selected files to rar (password+level)"
+```
 
 ---
 
