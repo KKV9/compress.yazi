@@ -1,7 +1,7 @@
 -- Check for windows
 local is_windows = ya.target_family() == "windows"
 -- Define flags and strings
-local is_password, is_encrypted, is_level, cmd_password, cmd_level = false, false, false, "", ""
+local is_password, is_encrypted, is_level, cmd_password, cmd_level, default_extention = false, false, false, "", "", "zip"
 
 -- Function to check valid filename
 local function is_valid_filename(name)
@@ -87,7 +87,7 @@ local selected_or_hovered =
             end
             table.insert(path_fnames[paths[idx]], name)
         end
-        return path_fnames, tostring(tab.current.cwd)
+        return path_fnames, names, tostring(tab.current.cwd)
     end
 )
 
@@ -229,17 +229,31 @@ local archive_commands = {
 
 return {
     entry = function(_, job)
-        -- Check if password is needed. Search for char in the entire arguments array as a single string
+        -- Parse flags and default extension
         if job.args ~= nil then
-            local args_string = table.concat(job.args, "")
-            is_password = string.find(args_string, "p") ~= nil
-            is_encrypted = string.find(args_string, "h") ~= nil
-            is_level = string.find(args_string, "l") ~= nil
+            for _, arg in ipairs(job.args) do
+                if arg:sub(1, 1) == "-" then
+                    -- Handle combined flags (e.g., -phl)
+                    for flag in arg:sub(2):gmatch(".") do
+                        if flag == "p" then
+                            is_password = true
+                        elseif flag == "h" then
+                            is_encrypted = true
+                        elseif flag == "l" then
+                            is_level = true
+                        end
+                    end
+                elseif arg:sub(1, 2) == "--" then
+                    -- Handle default extension flag (e.g., --zip or --7z)
+                    default_extention = arg:sub(3)
+                end
+            end
         end
+
         -- Exit visual mode
         ya.emit("escape", {visual = true})
         -- Define file table and output_dir (pwd)
-        local path_fnames, output_dir = selected_or_hovered()
+        local path_fnames, fnames, output_dir = selected_or_hovered()
         -- Get archive filename
         local output_name, event =
             ya.input(
@@ -251,6 +265,15 @@ return {
         if event ~= 1 then
             return
         end
+
+        local default_name = #fnames == 1 and fnames[1] or Url(output_dir).name
+        output_name = output_name == "" and string.format("%s.%s", default_name, default_extention) or output_name
+
+        -- Add default extension if none is specified
+        if not output_name:match("%.%w+$") then
+            output_name = string.format("%s.%s", output_name, default_extention)
+        end
+
         if not is_valid_filename(output_name) then
             notify_error("Invalid archive filename", "error")
             return

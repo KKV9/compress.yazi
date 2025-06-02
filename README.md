@@ -95,6 +95,11 @@ run  = "plugin compress"
 desc = "Archive selected files"
 
 [[mgr.prepend_keymap]]
+on   = [ "c", "a", "7" ]
+run  = "plugin compress --7z"
+desc = "Archive selected files with 7zip"
+
+[[mgr.prepend_keymap]]
 on   = [ "c", "a", "p" ]
 run  = "plugin compress -p"
 desc = "Archive selected files (password)"
@@ -127,7 +132,7 @@ desc = "Archive selected files (password+header+level)"
    - <kbd>h</kbd> to encrypt header (7z/rar)
    - <kbd>l</kbd> to set compression level (all compression algorithims)
    - <kbd>u</kbd> for all options together
-4. **Type a name** for your archive (must match a supported extension).
+4. **Type a name** for your archive (or leave blank for suggested name).
 5. **Enter password** and/or **compression level** if prompted.
 6. **Overwrite protect** if a file already exists, the new file will be given a suffix _#.
 7. Enjoy your shiny new archive!
@@ -140,6 +145,7 @@ desc = "Archive selected files (password+header+level)"
 - `-p` Password protect (zip/7z/rar)
 - `-h` Encrypt header (7z/rar)
 - `-l` Set compression level (all compression algorithims)
+- `--<extention>` Specify a default extention (eg., `--7z`, `--tar.gz`)
 
 ---
 
@@ -147,6 +153,7 @@ desc = "Archive selected files (password+header+level)"
 
 - The file extension **must** match a supported type.
 - The required compression tool **must** be installed and in your `PATH` (7zip/rar etc.).
+- If no extention is provided, the default extention (zip) will be appended automatically.
 
 ---
 
