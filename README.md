@@ -150,7 +150,7 @@ on   = [ "c", "a", "7" ]
 run  = "plugin compress '-ph 7z'"
 desc = "Archive selected files to 7z (password+header)"
 [[mgr.prepend_keymap]]
-on   = [ "c", "a", "7" ]
+on   = [ "c", "a", "r" ]
 run  = "plugin compress '-p -l rar'"
 desc = "Archive selected files to rar (password+level)"
 ```
