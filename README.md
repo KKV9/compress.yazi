@@ -95,11 +95,6 @@ run  = "plugin compress"
 desc = "Archive selected files"
 
 [[mgr.prepend_keymap]]
-on   = [ "c", "a", "7" ]
-run  = "plugin compress --7z"
-desc = "Archive selected files with 7zip"
-
-[[mgr.prepend_keymap]]
 on   = [ "c", "a", "p" ]
 run  = "plugin compress -p"
 desc = "Archive selected files (password)"
@@ -118,6 +113,11 @@ desc = "Archive selected files (compression level)"
 on   = [ "c", "a", "u" ]
 run  = "plugin compress -phl"
 desc = "Archive selected files (password+header+level)"
+
+[[mgr.prepend_keymap]]
+on   = [ "c", "a", "7" ]
+run  = "plugin compress '-ph 7z'"
+desc = "Archive selected files to encrypted 7z"
 ```
 
 ---
@@ -142,10 +142,11 @@ desc = "Archive selected files (password+header+level)"
 ## 🏳️‍🌈 Flags
 
 - Combine flags for more power!
+- when separating flags with spaces, make sure to single quote them (eg., `'-ph rar'`)
 - `-p` Password protect (zip/7z/rar)
 - `-h` Encrypt header (7z/rar)
 - `-l` Set compression level (all compression algorithims)
-- `--<extention>` Specify a default extention (eg., `--7z`, `--tar.gz`)
+- `<extention>` Specify a default extention (eg., `7z`, `tar.gz`)
 
 ---
 

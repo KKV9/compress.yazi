@@ -1,7 +1,7 @@
 -- Check for windows
 local is_windows = ya.target_family() == "windows"
 -- Define flags and strings
-local is_password, is_encrypted, is_level, cmd_password, cmd_level, default_extention = false, false, false, "", "", "zip"
+local is_password, is_encrypted, is_level, cmd_password, cmd_level, default_extension = false, false, false, "", "", "zip"
 
 -- Function to check valid filename
 local function is_valid_filename(name)
@@ -232,7 +232,7 @@ return {
         -- Parse flags and default extension
         if job.args ~= nil then
             for _, arg in ipairs(job.args) do
-                if arg:sub(1, 1) == "-" then
+                if arg:match("^%-(%w+)$") then
                     -- Handle combined flags (e.g., -phl)
                     for flag in arg:sub(2):gmatch(".") do
                         if flag == "p" then
@@ -243,9 +243,13 @@ return {
                             is_level = true
                         end
                     end
-                elseif arg:sub(1, 2) == "--" then
-                    -- Handle default extension flag (e.g., --zip or --7z)
-                    default_extention = arg:sub(3)
+                elseif arg:match("^%w+$") then
+                    -- Handle default extension (e.g., 7z, zip)
+                    if archive_commands["%." .. arg .. "$"] then
+                        default_extension = arg
+                    else
+                        notify_error(string.format("Unsupported extension: %s", arg), "warn")
+                    end
                 end
             end
         end
@@ -266,14 +270,16 @@ return {
             return
         end
 
+        -- Determine the default name for the archive
         local default_name = #fnames == 1 and fnames[1] or Url(output_dir).name
-        output_name = output_name == "" and string.format("%s.%s", default_name, default_extention) or output_name
+        output_name = output_name == "" and string.format("%s.%s", default_name, default_extension) or output_name
 
         -- Add default extension if none is specified
         if not output_name:match("%.%w+$") then
-            output_name = string.format("%s.%s", output_name, default_extention)
+            output_name = string.format("%s.%s", output_name, default_extension)
         end
 
+        -- Validate the final archive filename
         if not is_valid_filename(output_name) then
             notify_error("Invalid archive filename", "error")
             return
@@ -292,7 +298,7 @@ return {
         local matched_pattern = false
         for pattern, cmd_list in pairs(archive_commands) do
             if output_name:match(pattern) then
-                matched_pattern = true -- Mark that file extention is correct
+                matched_pattern = true -- Mark that file extension is correct
                 for _, cmd in ipairs(cmd_list) do
                     -- Check if archive_cmd is available
                     local find_command = type(cmd.command) == "table" and find_command_name(cmd.command) or cmd.command
