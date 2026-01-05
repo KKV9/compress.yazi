@@ -243,7 +243,7 @@ return {
                             is_level = true
                         end
                     end
-                elseif arg:match("^%w[%w\\.]*$") then
+                elseif arg:match("^[%w%.]+$") then
                     -- Handle default extension (e.g., 7z, zip)
                     if archive_commands["%." .. arg .. "$"] then
                         default_extension = arg
@@ -494,3 +494,4 @@ return {
         end
     end
 }
+
