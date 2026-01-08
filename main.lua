@@ -476,7 +476,7 @@ return {
         -- Move the final file from the temporary directory to the output directory
         local final_output_url, temp_url_processed = combine_url(output_dir, original_name), combine_url(temp_dir, original_name)
         final_output_url, _ = tostring(fs.unique_name(Url(final_output_url)))
-        local move_status, move_err = os.rename(temp_url_processed, final_output_url)
+        local move_status, move_err = fs.rename(Url(temp_url_processed), Url(final_output_url))
         if not move_status then
             -- Notify the user if the move operation fails and clean up the temporary directory
             notify_error(string.format("Failed to move %s to %s, error: %s", temp_url_processed, final_output_url, move_err), "error")
