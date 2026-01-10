@@ -143,7 +143,7 @@ desc = "Archive selected files to rar (password+level)"
 - The file extension **must** match a supported type.
 - The required compression tool **must** be installed and in your `PATH` (7zip/rar etc.).
 - If no extention is provided, the default extention (zip) will be appended automatically.
-- If you leave the filename blank, the pluigin will use the selected filename or parent directory when multiple files are selected to name the archive.
+- If you leave the filename blank, the plugin will use the selected filename or parent directory when multiple files are selected to name the archive.
 
 ## 📣 Credits
 
