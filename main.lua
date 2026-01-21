@@ -449,7 +449,7 @@ return {
                 Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(filepath):spawn():wait()
             if not archive_status or not archive_status.success then
                 -- Notify the user if the archiving process fails and clean up the temporary directory
-                notify_error(string.format("Failed to create archive %s with '%s', error: %s", output_name, archive_cmd, archive_err), "error")
+                notify_error(string.format("Failed to create archive %s with '%s', error: %s", ya.quote(output_name), archive_cmd, archive_err), "error")
                 local cleanup_status, cleanup_err = fs.remove("dir_all", Url(temp_dir))
                 if not cleanup_status then
                     notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
@@ -464,7 +464,7 @@ return {
                 Command(archive_compress):arg(archive_compress_args):arg(temp_output_url):spawn():wait()
             if not compress_status or not compress_status.success then
                 -- Notify the user if the compression process fails and clean up the temporary directory
-                notify_error(string.format("Failed to compress archive %s with '%s', error: %s", output_name, archive_compress, compress_err), "error")
+                notify_error(string.format("Failed to compress archive %s with '%s', error: %s", ya.quote(output_name), archive_compress, compress_err), "error")
                 local cleanup_status, cleanup_err = fs.remove("dir_all", Url(temp_dir))
                 if not cleanup_status then
                     notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
@@ -478,11 +478,10 @@ return {
         final_output_url, _ = tostring(fs.unique_name(Url(final_output_url)))
         local move_status, move_err = fs.rename(Url(temp_url_processed), Url(final_output_url))
         if not move_status then
-            -- Notify the user if the move operation fails and clean up the temporary directory
-            notify_error(string.format("Failed to move %s to %s, error: %s", temp_url_processed, final_output_url, move_err), "error")
+            notify_error(string.format("Failed to move %s to %s, error: %s", ya.quote(temp_url_processed), ya.quote(final_output_url), move_err), "error")
             local cleanup_status, cleanup_err = fs.remove("dir_all", Url(temp_dir))
             if not cleanup_status then
-                notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
+                notify_error(string.format("Failed to clean up temporary directory %s, error: %s", ya.quote(temp_dir), cleanup_err), "error")
             end
             return
         end
@@ -490,8 +489,18 @@ return {
         -- Cleanup the temporary directory after successful operation
         local cleanup_status, cleanup_err = fs.remove("dir_all", Url(temp_dir))
         if not cleanup_status then
-            notify_error(string.format("Failed to clean up temporary directory %s, error: %s", temp_dir, cleanup_err), "error")
+            notify_error(string.format("Failed to clean up temporary directory %s, error: %s", ya.quote(temp_dir), cleanup_err), "error")
         end
+
+        -- Notify user of success
+        ya.notify(
+            {
+                title = "Archive",
+                content = string.format("Successfully created %s", ya.quote(Url(final_output_url).name)),
+                level = "info",
+                timeout = 3
+            }
+        )
     end
 }
 
