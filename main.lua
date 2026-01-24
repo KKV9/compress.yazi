@@ -489,13 +489,23 @@ return {
 
 		-- If compression is required, execute the compression command
 		if archive_compress ~= "" then
-			local compressed_output = combine_url(temp_dir, original_name)
-			local compress_status, compress_err = Command(archive_compress)
-				:arg(archive_compress_args)
-				:arg(compressed_output)
-				:arg(temp_output_url)
-				:spawn()
-				:wait()
+			local compress_status, compress_err
+
+			-- Check if using 7z for compression (requires output file argument)
+			if archive_compress:match("^7z") then
+				local compressed_output = combine_url(temp_dir, original_name)
+				compress_status, compress_err = Command(archive_compress)
+					:arg(archive_compress_args)
+					:arg(compressed_output)
+					:arg(temp_output_url)
+					:spawn()
+					:wait()
+			else
+				-- Native compression tools (gzip, xz, bzip2, etc.) compress in-place
+				compress_status, compress_err =
+					Command(archive_compress):arg(archive_compress_args):arg(temp_output_url):spawn():wait()
+			end
+
 			if not compress_status or not compress_status.success then
 				-- Notify the user if the compression process fails and clean up the temporary directory
 				notify(
