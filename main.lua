@@ -5,6 +5,7 @@ local is_windows = ya.target_family() == "windows"
 
 -- Define default flags and strings
 local is_password, is_encrypted, is_level = false, false, false
+local silent = false
 local default_extension = "zip"
 
 -- Function to check valid filename
@@ -342,6 +343,8 @@ return {
 							is_encrypted = true
 						elseif flag == "l" then
 							is_level = true
+						elseif flag == "s" then
+							silent = true
 						end
 					end
 				elseif arg:match("^[%w%.]+$") then
@@ -563,6 +566,8 @@ return {
 		cleanup_temp_dir(temp_dir)
 
 		-- Notify user of success
-		notify(string.format("Successfully created archive: %s", ya.quote(to.name)), "info")
+		if not silent then
+			notify(string.format("Successfully created archive: %s", ya.quote(to.name)), "info")
+		end
 	end,
 }
