@@ -7,6 +7,11 @@ local is_windows = ya.target_family() == "windows"
 local is_password, is_encrypted, is_level = false, false, false
 local default_extension = "zip"
 
+-- Allow dots when matching file extension arguments
+local function extension_pattern(ext)
+	return "%." .. ext:gsub("%.", "%%.") .. "$"
+end
+
 -- Function to check valid filename
 local function is_valid_filename(name)
 	-- Trim whitespace from both ends
@@ -346,7 +351,7 @@ return {
 					end
 				elseif arg:match("^[%w%.]+$") then
 					-- Handle default extension (e.g., 7z, zip)
-					if archive_commands["%." .. arg .. "$"] then
+					if archive_commands[extension_pattern(arg)] then
 						default_extension = arg
 					else
 						notify(string.format("Unsupported extension: %s", arg), "warn")
