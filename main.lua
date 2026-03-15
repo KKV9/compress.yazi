@@ -7,6 +7,7 @@ local is_windows = ya.target_family() == "windows"
 local is_password, is_encrypted, is_level = false, false, false
 local default_extension = "zip"
 
+-- Allow dots when matching file extension arguments
 local function extension_pattern(ext)
 	return "%." .. ext:gsub("%.", "%%.") .. "$"
 end
