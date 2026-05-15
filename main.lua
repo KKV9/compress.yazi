@@ -1,4 +1,4 @@
---- @since 25.12.29
+--- @since 26.5.6
 
 -- Check for windows
 local is_windows = ya.target_family() == "windows"
