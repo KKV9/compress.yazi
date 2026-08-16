@@ -3,10 +3,6 @@
 -- Check for windows
 local is_windows = ya.target_family() == "windows"
 
--- Define default flags and strings
-local is_password, is_encrypted, is_level, is_silent_success = false, false, false, false
-local default_extension = "zip"
-
 -- Allow dots when matching file extension arguments
 local function extension_pattern(ext)
 	return "%." .. ext:gsub("%.", "%%.") .. "$"
@@ -129,13 +125,27 @@ local function get_password_args(archive_cmd, encrypted, header_arg)
 		pos = { "top-center", y = 3, w = 40 },
 	})
 	if event ~= 1 or output_password == "" then
+		notify("Password required, operation aborted", "error")
+		return nil
+	end
+	local output_confirm_password, event = ya.input({
+		title = "Confirm password:",
+		obscure = true,
+		pos = { "top-center", y = 3, w = 40 },
+	})
+	if event ~= 1 or output_confirm_password == "" then
+		notify("Password confirmation required, operation aborted", "error")
+		return nil
+	end
+	if output_password ~= output_confirm_password then
+		notify("Passwords do not match", "error")
 		return nil
 	end
 	-- Handling for RAR with encryption
 	if archive_cmd == "rar" and encrypted then
 		return { header_arg .. output_password }
 	end
-	return { "-P" .. output_password }
+	return { (archive_cmd == "zip" and "-P" or "-p") .. output_password }
 end
 
 -- Table of archive commands
@@ -296,25 +306,25 @@ local archive_commands = {
 }
 
 -- Function for command matching
-local function find_archive_command(output_name)
+local function find_archive_command(output_name, password_required)
 	for pattern, cmd_list in pairs(archive_commands) do
 		if output_name:match(pattern) then
 			for _, cmd in ipairs(cmd_list) do
 				-- Check if archive command is available
 				local cmd_name = type(cmd.command) == "table" and find_command_name(cmd.command) or cmd.command
-				if is_command_available(cmd_name) then
+				if (not password_required or cmd.passwordable) and is_command_available(cmd_name) then
 					-- Check if compress command (if listed) is available
 					if not cmd.compress or is_command_available(cmd.compress) then
 						return {
 							cmd = cmd_name,
-							args = cmd.args,
+							args = { table.unpack(cmd.args) },
 							compress = cmd.compress or "",
 							level_arg = cmd.level_arg or "",
 							level_min = cmd.level_min,
 							level_max = cmd.level_max,
 							header_arg = cmd.header_arg or "",
 							passwordable = cmd.passwordable or false,
-							compress_args = cmd.compress_args or {},
+							compress_args = { table.unpack(cmd.compress_args or {}) },
 						}
 					end
 				end
@@ -329,6 +339,8 @@ end
 
 return {
 	entry = function(_, job)
+		local is_password, is_encrypted, is_level, is_silent_success = false, false, false, false
+		local default_extension = "zip"
 		-- Parse flags and default extension
 		if job.args then
 			for _, arg in ipairs(job.args) do
@@ -389,12 +401,12 @@ return {
 		end
 
 		-- Command matching
-		local archive_config = find_archive_command(output_name)
+		local archive_config = find_archive_command(output_name, is_password)
 		if archive_config == false then
 			notify("Unsupported file extension", "error")
 			return
 		elseif not archive_config then
-			notify("Could not find a suitable archive program for the selected file extension", "error")
+			notify("Could not find a suitable archive program for the selected format and options", "error")
 			return
 		end
 
@@ -412,10 +424,11 @@ return {
 		-- Password handling
 		if archive_passwordable and is_password then
 			local password_args = get_password_args(archive_cmd, is_encrypted, archive_header_arg)
-			if password_args then
-				for _, arg in ipairs(password_args) do
-					table.insert(archive_args, arg)
-				end
+			if not password_args then
+				return
+			end
+			for _, arg in ipairs(password_args) do
+				table.insert(archive_args, arg)
 			end
 		end
 

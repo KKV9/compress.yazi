@@ -114,7 +114,7 @@ desc = "Archive selected files (password+header+level)"
    - <kbd>l</kbd> to set compression level (all compression algorithims)
    - <kbd>u</kbd> for all options together
 4. **Type a name** for your archive (or leave blank for suggested name).
-5. **Enter password** and/or **compression level** if prompted.
+5. **Enter and confirm your password** and/or **compression level** if prompted.
 6. **Overwrite protect** if a file already exists, the new file will be given a suffix _#.
 7. Enjoy your shiny new archive!
 
