@@ -45,13 +45,7 @@ end
 
 -- Function to check if command is available
 local function is_command_available(cmd)
-	local stat_cmd
-	if is_windows then
-		stat_cmd = string.format("where %s > nul 2>&1", cmd)
-	else
-		stat_cmd = string.format("command -v %s >/dev/null 2>&1", cmd)
-	end
-	return os.execute(stat_cmd)
+	return Command(cmd):arg("--help"):status() ~= nil
 end
 
 -- Function to find first available command from list
