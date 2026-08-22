@@ -79,7 +79,7 @@ local selected_or_hovered = ya.sync(function()
 	local path_fnames = {}
 
 	for _, u in pairs(tab.selected) do
-		paths[#paths + 1] = tostring(u.parent)
+		paths[#paths + 1] = tostring(u.url.parent)
 		names[#names + 1] = tostring(u.name)
 	end
 
