@@ -135,6 +135,20 @@ local function get_password_args(archive_cmd, encrypted, header_arg)
 		pos = { "top-center", y = 3, w = 40 },
 	})
 	if event ~= 1 or output_password == "" then
+		notify("Password required, operation aborted", "error")
+		return nil
+	end
+	local output_confirm_password, event = ya.input({
+		title = "Confirm password:",
+		obscure = true,
+		pos = { "top-center", y = 3, w = 40 },
+	})
+	if event ~= 1 or output_confirm_password == "" then
+		notify("Password confirmation required, operation aborted", "error")
+		return nil
+	end
+	if output_password ~= output_confirm_password then
+		notify("Passwords do not match", "error")
 		return nil
 	end
 	-- Handling for RAR with encryption
@@ -418,10 +432,11 @@ return {
 		-- Password handling
 		if archive_passwordable and is_password then
 			local password_args = get_password_args(archive_cmd, is_encrypted, archive_header_arg)
-			if password_args then
-				for _, arg in ipairs(password_args) do
-					table.insert(archive_args, arg)
-				end
+			if not password_args then
+				return
+			end
+			for _, arg in ipairs(password_args) do
+				table.insert(archive_args, arg)
 			end
 		end
 
