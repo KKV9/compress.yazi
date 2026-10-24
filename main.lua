@@ -3,6 +3,14 @@
 -- Check for windows
 local is_windows = ya.target_family() == "windows"
 
+-- Custom tasks, which is what makes the compression show up in the task manager, need Yazi 26.8
+local has_custom_tasks = pcall(function()
+	ya.task("custom", { scope = rt.scope() })
+end)
+
+-- Linux exposes how many bytes a process has read so far, which is what progress is based on
+local can_track_bytes = has_custom_tasks and ya.target_os() == "linux"
+
 -- Define default flags and strings
 local is_password, is_encrypted, is_level, is_silent_success = false, false, false, false
 local default_extension = "zip"
@@ -110,6 +118,64 @@ local function cleanup_temp_dir(temp_dir)
 		return false
 	end
 	return true
+end
+
+-- How often to sample the archiver's progress, in seconds
+local POLL_INTERVAL = 0.25
+
+-- Number of consecutive failed samples after which sampling is given up on
+local POLL_FAILURES = 5
+
+-- Function to read how many bytes the process `pid` has read so far
+local function read_rchar(pid)
+	local output = Command("cat"):arg(string.format("/proc/%d/io", pid)):output()
+	if not output or not output.status.success then
+		return nil
+	end
+	return tonumber(output.stdout:match("rchar:%s*(%d+)"))
+end
+
+-- Function to run `command` to completion, reporting its progress to `task` while it runs,
+-- where `budget` is how many bytes the command is expected to read.
+-- Returns (status, err), just like `Child:wait()`
+local function run_tracked(command, task, budget)
+	local child, err = command:spawn()
+	if not child then
+		return nil, err
+	end
+
+	local pid = child:id()
+	if not task or not can_track_bytes or not pid or budget <= 0 then
+		-- Nothing to report against, so simply wait for the command to finish
+		return child:wait()
+	end
+
+	local done, failures = 0, 0
+	while true do
+		local rchar = failures < POLL_FAILURES and read_rchar(pid)
+		if rchar then
+			failures, rchar = 0, math.min(rchar, budget)
+			if rchar > done then
+				-- Every reported value adds up within the task, so send the difference only
+				task:progress { processed = rchar - done }
+				done = rchar
+			end
+		else
+			failures = failures + 1
+		end
+
+		local status, wait_err = child:try_wait()
+		if status then
+			-- Charge the rest of the budget once the command succeeds, so that the
+			-- reported percentage stays exact and only ever moves forward
+			if status.success and budget > done then
+				task:progress { processed = budget - done }
+			end
+			return status, wait_err
+		end
+
+		ya.sleep(POLL_INTERVAL)
+	end
 end
 
 -- Function for compression level
@@ -473,58 +539,112 @@ return {
 		-- Define the temporary output file path within the temporary directory
 		local temp_output_url = combine_url(temp_dir, output_name)
 
+		-- Report a failure to the task, to the user, and clean up the temporary directory
+		local task
+		local function fail(reason)
+			if task then
+				task:fail(reason)
+			end
+			notify(reason, "error")
+			cleanup_temp_dir(temp_dir)
+		end
+
+		-- Work out how many bytes the archiver is going to read, to report progress against
+		local budgets, total_size = {}, 0
+		for filepath, filenames in pairs(path_fnames) do
+			local budget = 0
+			for _, filename in ipairs(filenames) do
+				local calculator = fs.calc_size(Url(combine_url(filepath, filename)))
+				while true do
+					local chunk = calculator and calculator:recv()
+					if not chunk then
+						break
+					end
+					budget = budget + chunk
+				end
+			end
+			budgets[filepath] = budget
+			total_size = total_size + budget
+		end
+
+		-- The compressor reads the archive produced by the archiver, which is roughly as
+		-- large as the files that went into it, so it accounts for about half of the work
+		local workload = archive_compress ~= "" and total_size * 2 or total_size
+
+		-- Register the compression as a Yazi task, so that it shows up in the task manager
+		-- (`w`) and in the status bar, with a progress bar while it runs
+		if has_custom_tasks then
+			task = ya.task("custom", {
+				-- No pool: the task needs no worker of its own, so Yazi starts it right away
+				pool = "none",
+				-- Trace the created archive in the manager, like Yazi's own file tasks do
+				track = true,
+				-- Without a size to work against, the task shows up without a percentage
+				progress = can_track_bytes and workload > 0,
+				scope = rt.scope(),
+			}):name("Compress " .. original_name):spawn()
+
+			if not task:acquire() then
+				cleanup_temp_dir(temp_dir)
+				return
+			end
+
+			task:progress { total = #fnames, workload = workload }
+		end
+
 		-- Add files to the output archive
 		for filepath, filenames in pairs(path_fnames) do
 			-- Execute the archive command for each path and its respective files
-			local archive_status, archive_err =
-				Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(filepath):spawn():wait()
+			local command = Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(filepath)
+			local archive_status, archive_err = run_tracked(command, task, budgets[filepath])
 			if not archive_status or not archive_status.success then
-				-- Notify the user if the archiving process fails and clean up the temporary directory
-				notify(
+				-- Report the failure if the archiving process fails
+				fail(
 					string.format(
 						"Failed to create archive %s with '%s', error: %s",
 						ya.quote(output_name),
 						archive_cmd,
 						tostring(archive_err)
-					),
-					"error"
+					)
 				)
-				cleanup_temp_dir(temp_dir)
 				return
+			end
+
+			if task then
+				task:progress { success = #filenames }
 			end
 		end
 
 		-- If compression is required, execute the compression command
 		if archive_compress ~= "" then
-			local compress_status, compress_err
+			-- The compressor reads the uncompressed archive created above
+			local tar_cha = fs.cha(Url(temp_output_url))
+			local tar_size = tar_cha and tar_cha.len or 0
 
+			local command
 			-- Check if using 7z for compression (requires output file argument)
 			if archive_compress:match("^7z") then
 				local compressed_output = combine_url(temp_dir, original_name)
-				compress_status, compress_err = Command(archive_compress)
+				command = Command(archive_compress)
 					:arg(archive_compress_args)
 					:arg(compressed_output)
 					:arg(temp_output_url)
-					:spawn()
-					:wait()
 			else
 				-- Native compression tools (gzip, xz, bzip2, etc.) compress in-place
-				compress_status, compress_err =
-					Command(archive_compress):arg(archive_compress_args):arg(temp_output_url):spawn():wait()
+				command = Command(archive_compress):arg(archive_compress_args):arg(temp_output_url)
 			end
 
+			local compress_status, compress_err = run_tracked(command, task, tar_size)
 			if not compress_status or not compress_status.success then
-				-- Notify the user if the compression process fails and clean up the temporary directory
-				notify(
+				-- Report the failure if the compression process fails
+				fail(
 					string.format(
 						"Failed to compress archive %s with '%s', error: %s",
 						ya.quote(output_name),
 						archive_compress,
 						tostring(compress_err)
-					),
-					"error"
+					)
 				)
-				cleanup_temp_dir(temp_dir)
 				return
 			end
 		end
@@ -534,34 +654,32 @@ return {
 		local temp_url_processed = combine_url(temp_dir, original_name)
 		final_output_url = tostring(fs.unique("file", Url(final_output_url)))
 		local from, to = Url(temp_url_processed), Url(final_output_url)
+		-- `to` is consumed by `task:succeed` below, so keep its name around
+		local to_name = to.name
 		local move_status, move_err = fs.rename(from, to)
 		if not move_status then
 			if move_err and move_err.kind == "CrossesDevices" then
 				local copy_status, copy_err = fs.copy(from, to)
 				if not copy_status then
-					notify(
+					fail(
 						string.format(
 							"Failed to copy across devices %s to %s, error: %s",
 							ya.quote(from.name),
 							ya.quote(to.name),
 							copy_err and tostring(copy_err.kind) or "unknown"
-						),
-						"error"
+						)
 					)
-					cleanup_temp_dir(temp_dir)
 					return
 				end
 			else
-				notify(
+				fail(
 					string.format(
 						"Failed to move %s to %s, error: %s",
 						ya.quote(from.name),
 						ya.quote(to.name),
 						move_err and tostring(move_err.kind) or "unknown"
-					),
-					"error"
+					)
 				)
-				cleanup_temp_dir(temp_dir)
 				return
 			end
 		end
@@ -569,9 +687,14 @@ return {
 		-- Cleanup the temporary directory after successful operation
 		cleanup_temp_dir(temp_dir)
 
+		-- Finish the task, which also traces the created archive in the manager
+		if task then
+			task:succeed { to }
+		end
+
 		-- Notify user of success
 		if not is_silent_success then
-			notify(string.format("Successfully created archive: %s", ya.quote(to.name)), "info")
+			notify(string.format("Successfully created archive: %s", ya.quote(to_name)), "info")
 		end
 	end,
 }
