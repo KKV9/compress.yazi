@@ -23,6 +23,7 @@
 - 🛡️ **Header encryption:** Hide file lists (7z/rar)
 - ⚡ **Compression level:** Choose your balance of speed vs. size
 - 🛑 **Overwrite safety:** Never lose files by accident
+- 📊 **Live progress:** Compression runs as a task, so it shows up in the task manager (`w`) and status bar with a progress bar
 - 🎯 **Seamless Yazi integration:** Fast, native-like UX
 
 ## 📦 Supported File Types
@@ -143,6 +144,7 @@ desc = "Archive selected files to rar (password+level)"
 
 - The file extension **must** match a supported type.
 - The required compression tool **must** be installed and in your `PATH` (7zip/rar etc.).
+- The percentage of the progress bar is sampled from `/proc/<pid>/io`, so it needs Linux and Yazi 26.8 or newer; elsewhere the compression still shows up as a task, just without a percentage.
 - If no extention is provided, the default extention (zip) will be appended automatically.
 - If you leave the filename blank, the plugin will use the selected filename or parent directory, when multiple files are selected, to name the archive.
 
