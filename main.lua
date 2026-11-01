@@ -61,32 +61,39 @@ local function combine_url(path, file)
 	return tostring(path_url:join(file_url))
 end
 
--- Function to make a table of selected or hovered files: path = filenames
+-- Archive from one shared directory so equal basenames keep distinct paths.
 local selected_or_hovered = ya.sync(function()
 	local tab = cx.active
-	local paths = {}
+	local urls = {}
 	local names = {}
-	local path_fnames = {}
 
 	for _, u in pairs(tab.selected) do
-		paths[#paths + 1] = tostring(u.url.parent)
+		urls[#urls + 1] = u.url
 		names[#names + 1] = tostring(u.name)
 	end
 
-	if #paths == 0 and tab.current.hovered then
-		paths[1] = tostring(tab.current.hovered.url.parent)
+	if #urls == 0 and tab.current.hovered then
+		urls[1] = tab.current.hovered.url
 		names[1] = tostring(tab.current.hovered.name)
 	end
 
-	for idx, name in ipairs(names) do
-		local path = paths[idx]
-		if not path_fnames[path] then
-			path_fnames[path] = {}
+	local root = tab.current.cwd
+	for _, url in ipairs(urls) do
+		while root and not url.parent:starts_with(root) do
+			root = root.parent
 		end
-		table.insert(path_fnames[path], name)
 	end
 
-	return path_fnames, names, tostring(tab.current.cwd)
+	if not root or #urls == 0 then
+		return nil
+	end
+
+	local filenames = {}
+	for _, url in ipairs(urls) do
+		filenames[#filenames + 1] = "." .. (is_windows and "\\" or "/") .. tostring(url:strip_prefix(root))
+	end
+
+	return { [tostring(root)] = filenames }, names, tostring(tab.current.cwd)
 end)
 
 -- Function to cleanup temporary directory
@@ -375,6 +382,10 @@ return {
 
 		-- Define file table and output_dir (pwd)
 		local path_fnames, fnames, output_dir = selected_or_hovered()
+		if not path_fnames then
+			notify("Select files with a shared parent directory", "error")
+			return
+		end
 
 		-- Get archive filename
 		local output_name, event = ya.input({
