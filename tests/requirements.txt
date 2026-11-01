@@ -1,0 +1,3 @@
+pyte==0.8.2
+psutil>=6.0
+pywinpty>=2.0.13; sys_platform == "win32"

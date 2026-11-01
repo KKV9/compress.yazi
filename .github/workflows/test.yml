@@ -1,0 +1,80 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "31 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: ${{ matrix.os }} / ${{ matrix.yazi }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+        yazi: [v26.9.1, nightly]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - name: Install Linux archive tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y 7zip zip libarchive-tools gzip xz-utils bzip2 zstd liblz4-tool autoconf automake cmake liblz4-dev liblzma-dev libzstd-dev zlib1g-dev libbz2-dev libssl-dev
+      - name: Build BSD tar with all compression codecs
+        if: runner.os == 'Linux'
+        run: |
+          curl -fL https://www.libarchive.org/downloads/libarchive-3.8.11.tar.xz | tar xJ
+          cmake -S libarchive-3.8.11 -B "$RUNNER_TEMP/libarchive-build" \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/libarchive" \
+            -DENABLE_TEST=OFF -DENABLE_CPIO=OFF -DENABLE_CAT=OFF -DENABLE_UNZIP=OFF \
+            -DENABLE_LZ4=ON -DENABLE_LZMA=ON -DENABLE_ZSTD=ON -DENABLE_ZLIB=ON -DENABLE_BZip2=ON
+          cmake --build "$RUNNER_TEMP/libarchive-build" --parallel 2
+          cmake --install "$RUNNER_TEMP/libarchive-build"
+          echo "$RUNNER_TEMP/libarchive/bin" >> "$GITHUB_PATH"
+      - name: Install macOS archive tools
+        if: runner.os == 'macOS'
+        run: brew install sevenzip libarchive xz zstd lz4 autoconf automake
+      - name: Install Windows archive tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'C:\Program Files\7-Zip\7z.exe')) {
+            choco install 7zip -y --no-progress
+          }
+      - name: Install LHA
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          curl -fL https://github.com/jca02266/lha/archive/16619b066b189ef289bb8b07b37d1c38d550da99.tar.gz | tar xz
+          cd lha-*
+          autoreconf -fi
+          ./configure --prefix="$RUNNER_TEMP/lha"
+          make -j2
+          make install
+          echo "$RUNNER_TEMP/lha/bin" >> "$GITHUB_PATH"
+      - name: Install Yazi and RAR
+        run: python tests/install.py ${{ matrix.yazi }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: python -m pip install -r tests/requirements.txt
+      - name: Run terminal integration tests
+        run: python tests/integration.py
+        env:
+          REQUIRE_BSD_CODECS: ${{ runner.os == 'Linux' && '1' || '' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terminal-${{ matrix.os }}-${{ matrix.yazi }}
+          path: test-results/

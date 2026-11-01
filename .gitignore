@@ -1,3 +1,6 @@
 # Lua Language Server configs (local/editor-specific)
 .luarc.json
 .stylua.toml
+.tools/
+test-results/
+__pycache__/
