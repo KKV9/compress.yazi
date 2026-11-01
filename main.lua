@@ -318,7 +318,13 @@ local compressors = {
 		library = "liblz4",
 		bsdtar_level_max = 9,
 	},
-	lha = { command = "lha", args = { "a" }, level_arg = "-o", level_min = 5, level_max = 7 },
+	lha = {
+		command = "lha",
+		args = { "a", "--system-kanji-code=utf8", "--archive-kanji-code=utf8" },
+		level_arg = "-o",
+		level_min = 5,
+		level_max = 7,
+	},
 }
 
 for ext, compressor in pairs(compressors) do
@@ -628,7 +634,7 @@ return {
 			end
 
 			local child, temp_dir, destination
-			local function run(program, args, files, phase, stats)
+			local function run(program, args, files, cwd, phase, stats)
 				task:log(phase)
 				local command, kind = Command(program)
 				if program:match("^7z") then
@@ -657,7 +663,7 @@ return {
 					kind = "lha"
 				end
 				local err
-				child, err = command:arg(args):arg(files):cwd(root):stdout(Command.PIPED):stderr(Command.PIPED):spawn()
+				child, err = command:arg(args):arg(files):cwd(cwd):stdout(Command.PIPED):stderr(Command.PIPED):spawn()
 				if not child then
 					error(phase .. ": " .. tostring(err), 0)
 				end
@@ -716,20 +722,28 @@ return {
 					for _, file in ipairs(filenames) do
 						files[#files + 1] = file
 					end
-					run(config.cmd, config.args, files, "Create " .. ya.quote(name) .. " with " .. config.cmd, stats)
+					run(
+						config.cmd,
+						config.args,
+						files,
+						root,
+						"Create " .. ya.quote(name) .. " with " .. config.cmd,
+						stats
+					)
 					if config.compress then
-						files = { temp_output }
-						local target = tostring(Url(temp_dir):join(filename))
+						local relative = is_windows and ".\\" or "./"
+						files = { relative .. intermediate }
 						if config.compress:match("^7z") or config.compress == "lha" then
-							table.insert(files, 1, target)
+							table.insert(files, 1, relative .. filename)
 						elseif config.compress == "lz4" then
-							files[#files + 1] = target
+							files[#files + 1] = relative .. filename
 						end
 						local stat = fs.cha(Url(temp_output), false)
 						run(
 							config.compress,
 							config.compress_args,
 							files,
+							temp_dir,
 							"Compress " .. ya.quote(name) .. " with " .. config.compress,
 							{ bytes = stat and stat.len or 0 }
 						)
