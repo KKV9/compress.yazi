@@ -83,6 +83,11 @@ run  = "plugin compress"
 desc = "Archive selected files"
 
 [[mgr.prepend_keymap]]
+on   = [ "c", "a", "i" ]
+run  = "plugin compress -i"
+desc = "Configure archive options"
+
+[[mgr.prepend_keymap]]
 on   = [ "c", "a", "p" ]
 run  = "plugin compress -p"
 desc = "Archive selected files (password)"
@@ -109,6 +114,7 @@ desc = "Archive selected files (password+header+level)"
 2. Press <kbd>c</kbd> <kbd>a</kbd> to open the archive dialog.
 3. Choose:
    - <kbd>a</kbd> for a standard archive
+   - <kbd>i</kbd> to configure archive options
    - <kbd>p</kbd> for password protection (zip/7z/rar)
    - <kbd>h</kbd> to encrypt header (7z/rar)
    - <kbd>l</kbd> to set compression level (all compression algorithims)
@@ -122,6 +128,7 @@ desc = "Archive selected files (password+header+level)"
 
 - Combine flags for more power!
 - when separating flags with spaces, make sure to single quote them (eg., `'-ph rar'`)
+- `-i` Choose a format and options from a menu
 - `-p` Password protect (zip/7z/rar)
 - `-h` Encrypt header and require a password (7z/rar)
 - `-l` Set compression level (all compression algorithims)

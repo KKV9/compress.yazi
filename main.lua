@@ -20,11 +20,6 @@ local function canonical_archive_name(name)
 	end))
 end
 
-local function extension_pattern(ext)
-	ext = archive_aliases[ext] or ext
-	return "%." .. ext:gsub("%.", "%%.") .. "$"
-end
-
 local function is_valid_filename(name)
 	name = name:match("^%s*(.-)%s*$")
 	if name == "" then
@@ -90,16 +85,13 @@ end
 local selected_or_hovered = ya.sync(function()
 	local tab = cx.active
 	local urls = {}
-	local names = {}
 
 	for _, u in pairs(tab.selected) do
 		urls[#urls + 1] = u.url
-		names[#names + 1] = tostring(u.name)
 	end
 
 	if #urls == 0 and tab.current.hovered then
 		urls[1] = tab.current.hovered.url
-		names[1] = tostring(tab.current.hovered.name)
 	end
 
 	local root = tab.current.cwd
@@ -118,7 +110,8 @@ local selected_or_hovered = ya.sync(function()
 		filenames[#filenames + 1] = "." .. (is_windows and "\\" or "/") .. tostring(url:strip_prefix(root))
 	end
 
-	return tostring(root), filenames, names, tostring(tab.current.cwd)
+	local name = #urls == 1 and urls[1].name or tab.current.cwd.name or "archive"
+	return tostring(root), filenames, name, tostring(tab.current.cwd)
 end)
 
 local function cleanup_temp_dir(temp_dir)
@@ -128,9 +121,7 @@ local function cleanup_temp_dir(temp_dir)
 			string.format("Failed to clean up temporary directory %s, error: %s", ya.quote(temp_dir), tostring(err)),
 			"error"
 		)
-		return false
 	end
-	return true
 end
 
 local function create_temp_dir(root, filenames, output_dir)
@@ -204,7 +195,7 @@ local function add_compression_level(target_args, level_arg, level_value)
 	end
 end
 
-local function get_password_args(archive_cmd, encrypted, header_arg)
+local function input_password()
 	local output_password, event = ya.input({
 		title = "Enter password:",
 		obscure = true,
@@ -227,10 +218,7 @@ local function get_password_args(archive_cmd, encrypted, header_arg)
 		notify("Passwords do not match", "error")
 		return nil
 	end
-	if archive_cmd == "rar" and encrypted then
-		return { header_arg .. output_password }
-	end
-	return { "-p" .. output_password }
+	return output_password
 end
 
 -- -spd keeps literal filenames from expanding to unselected files.
@@ -238,7 +226,7 @@ local sevenzip_commands = { "7zz", "7z", "7za" }
 local tar_commands = { "tar", "bsdtar" }
 
 local archive_commands = {
-	["%.zip$"] = {
+	zip = {
 		{ command = "zip", args = { "-r" }, level_arg = "-", level_min = 0, level_max = 9 },
 		{
 			command = sevenzip_commands,
@@ -258,7 +246,7 @@ local archive_commands = {
 			level_max = 9,
 		},
 	},
-	["%.7z$"] = {
+	["7z"] = {
 		{
 			command = sevenzip_commands,
 			args = { "a", "-t7z", "-spd" },
@@ -269,7 +257,7 @@ local archive_commands = {
 			passwordable = true,
 		},
 	},
-	["%.rar$"] = {
+	rar = {
 		{
 			command = "rar",
 			args = { "a" },
@@ -280,7 +268,7 @@ local archive_commands = {
 			passwordable = true,
 		},
 	},
-	["%.tar$"] = { { command = tar_commands, args = { "-cf" } } },
+	tar = { { command = tar_commands, args = { "-cf" } } },
 }
 
 local compressors = {
@@ -339,179 +327,236 @@ for ext, compressor in pairs(compressors) do
 			level_max = compressor.bsdtar_level_max or compressor.level_max,
 		}
 	end
-	archive_commands[extension_pattern("tar." .. ext)] = candidates
+	archive_commands["tar." .. ext] = candidates
 end
 
-local function find_archive_command(output_name, password_required, headers_required)
-	output_name = canonical_archive_name(output_name)
-	for pattern, cmd_list in pairs(archive_commands) do
-		if output_name:match(pattern) then
-			for _, cmd in ipairs(cmd_list) do
-				local cmd_name = find_command_name(cmd.command, cmd.bsdtar)
-				if
-					cmd_name
-					and (not password_required or cmd.passwordable)
-					and (not headers_required or cmd.header_arg)
-				then
-					local compress = cmd.compress and find_command_name(cmd.compress)
-					if not cmd.compress or compress then
-						return {
-							cmd = cmd_name,
-							args = { table.unpack(cmd.args) },
-							compress = compress or "",
-							level_arg = cmd.level_arg or "",
-							level_min = cmd.level_min,
-							level_max = cmd.level_max,
-							header_arg = cmd.header_arg or "",
-							passwordable = cmd.passwordable or false,
-							password_args = cmd.password_args or {},
-							compress_args = { table.unpack(cmd.compress_args or {}) },
-						}
-					end
+local function find_archive_command(name, options)
+	name = canonical_archive_name(name)
+	local extension = name:match("%.([^.]+%.[^.]+)$")
+	local candidates = archive_commands[extension] or archive_commands[name:match("%.([^.]+)$")]
+	if not candidates then
+		return false
+	end
+	for _, candidate in ipairs(candidates) do
+		if (not options.password or candidate.passwordable) and (not options.headers or candidate.header_arg) then
+			local command = find_command_name(candidate.command, candidate.bsdtar)
+			local compress = candidate.compress and find_command_name(candidate.compress)
+			if command and (not candidate.compress or compress) then
+				local config = {}
+				for key, value in pairs(candidate) do
+					config[key] = value
 				end
+				config.cmd, config.compress = command, compress
+				config.args = { table.unpack(candidate.args) }
+				config.compress_args = { table.unpack(candidate.compress_args or {}) }
+				return config
 			end
-			return nil
 		end
 	end
-	return false
 end
+
+local function input_level(config, current)
+	local value, event = ya.input({
+		title = string.format("Compression level (%d - %d, blank for default):", config.level_min, config.level_max),
+		value = current and tostring(current) or "",
+		pos = { "top-center", y = 3, w = 50 },
+	})
+	if event ~= 1 then
+		return nil, false
+	elseif value == "" then
+		return nil, true
+	end
+	local level = tonumber(value)
+	if not level or level % 1 ~= 0 or level < config.level_min or level > config.level_max then
+		notify("Invalid level specified. Using defaults.", "warn")
+		return nil, true
+	end
+	return level, true
+end
+
+local format_choices = {
+	{ "z", "zip" },
+	{ "7", "7z" },
+	{ "r", "rar" },
+	{ "t", "tar" },
+	{ "g", "tar.gz" },
+	{ "x", "tar.xz" },
+	{ "b", "tar.bz2" },
+	{ "s", "tar.zst" },
+	{ "4", "tar.lz4" },
+	{ "a", "tar.lha" },
+}
+
+local function configure(state)
+	local function formats()
+		local available = {}
+		for _, choice in ipairs(format_choices) do
+			local config = find_archive_command("archive." .. choice[2], state)
+			if config then
+				available[#available + 1] = {
+					on = choice[1],
+					desc = choice[2] .. " (" .. config.cmd .. ")",
+					extension = choice[2],
+				}
+			end
+		end
+		return available
+	end
+
+	if not find_archive_command("archive." .. state.extension, state) then
+		local available = formats()
+		if #available == 0 then
+			notify("No archive program supports the requested format and options", "error")
+			return
+		end
+		state.extension = available[1].extension
+	end
+
+	while true do
+		local config = find_archive_command("archive." .. state.extension, state)
+		local items = { { on = "f", desc = "Format: " .. state.extension .. " (" .. config.cmd .. ")" } }
+		if config.passwordable or find_archive_command("archive." .. state.extension, { password = true }) then
+			items[#items + 1] = { on = "p", desc = "Password: " .. (state.password and "on" or "off") }
+		end
+		if config.header_arg then
+			items[#items + 1] = { on = "h", desc = "Headers: " .. (state.headers and "on" or "off") }
+		end
+		if config.level_arg then
+			items[#items + 1] = { on = "l", desc = "Level: " .. (state.level or "default") }
+		end
+		items[#items + 1] = { on = "c", desc = "Create" }
+		local choice = ya.which({ cands = items })
+		if not choice then
+			return
+		end
+		local key = items[choice].on
+		if key == "c" then
+			return state
+		elseif key == "f" then
+			local available = formats()
+			local picked = ya.which({ cands = available })
+			if picked then
+				state.extension = available[picked].extension
+				state.level = nil
+			end
+		elseif key == "p" then
+			state.password = not state.password
+			state.headers = state.password and state.headers
+		elseif key == "h" then
+			state.headers = not state.headers
+			state.password = state.password or state.headers
+		elseif key == "l" then
+			local level, accepted = input_level(config, state.level)
+			if accepted then
+				state.level, state.ask_level = level, false
+			end
+		end
+	end
+end
+
+local option_flags = { p = "password", h = "headers", l = "ask_level", s = "silent", i = "interactive" }
 
 return {
 	entry = function(_, job)
 		command_cache = {}
-		local is_password, is_encrypted, is_level, is_silent_success = false, false, false, false
-		local default_extension = "zip"
-		if job.args then
-			for _, arg in ipairs(job.args) do
-				if arg:match("^%-(%w+)$") then
-					for flag in arg:sub(2):gmatch(".") do
-						if flag == "p" then
-							is_password = true
-						elseif flag == "h" then
-							is_encrypted = true
-						elseif flag == "l" then
-							is_level = true
-						elseif flag == "s" then
-							is_silent_success = true
-						else
-							notify("Unknown flag: -" .. flag, "warn")
-						end
-					end
-				elseif arg:match("^[%w%.]+$") then
-					if archive_commands[extension_pattern(arg)] then
-						default_extension = arg
+		local state = { extension = "zip" }
+		for _, arg in ipairs(job.args or {}) do
+			if arg:match("^%-%w+$") then
+				for flag in arg:sub(2):gmatch(".") do
+					local option = option_flags[flag]
+					if option then
+						state[option] = true
 					else
-						notify(string.format("Unsupported extension: %s", arg), "warn")
+						notify("Unknown flag: -" .. flag, "warn")
 					end
-				else
-					notify(string.format("Unknown argument: %s", arg), "warn")
 				end
+			elseif archive_commands[archive_aliases[arg] or arg] then
+				state.extension = arg
+			else
+				notify((arg:match("^[%w%.]+$") and "Unsupported extension: " or "Unknown argument: ") .. arg, "warn")
 			end
 		end
-		is_password = is_password or is_encrypted
-
+		state.password = state.password or state.headers
 		ya.emit("escape", { visual = true })
 
-		local archive_dir, filenames, fnames, output_dir = selected_or_hovered()
-		if not archive_dir then
+		local root, filenames, default_name, output_dir = selected_or_hovered()
+		if not root then
 			notify("Select files with a shared parent directory", "error")
+			return
+		elseif state.interactive and not configure(state) then
 			return
 		end
 
-		local output_name, event = ya.input({
+		local default_filename = default_name .. "." .. state.extension
+		local name, event = ya.input({
 			title = "Create archive:",
+			value = state.interactive and default_filename or "",
 			pos = { "top-center", y = 3, w = 40 },
 		})
 		if event ~= 1 then
 			return
+		elseif name == "" then
+			name = default_filename
+		elseif not name:match("%.%w+$") then
+			name = name .. "." .. state.extension
 		end
-
-		local default_name = #fnames == 1 and fnames[1] or Url(output_dir).name
-		output_name = output_name == "" and string.format("%s.%s", default_name, default_extension) or output_name
-
-		if not output_name:match("%.%w+$") then
-			output_name = string.format("%s.%s", output_name, default_extension)
-		end
-
-		if not is_valid_filename(output_name) then
+		if not is_valid_filename(name) then
 			notify("Invalid archive filename", "error")
 			return
 		end
 
-		local archive_config = find_archive_command(output_name, is_password, is_encrypted)
-		if archive_config == false then
-			notify("Unsupported file extension", "error")
-			return
-		elseif not archive_config then
-			notify("Could not find a suitable archive program for the selected format and options", "error")
+		local config = find_archive_command(name, state)
+		if not config then
+			notify(
+				config == false and "Unsupported file extension"
+					or "Could not find a suitable archive program for the selected format and options",
+				"error"
+			)
 			return
 		end
-
-		local archive_cmd = archive_config.cmd
-		local archive_args = archive_config.args
-		local archive_compress = archive_config.compress
-		local archive_level_arg = is_level and archive_config.level_arg or ""
-		local archive_level_min = archive_config.level_min
-		local archive_level_max = archive_config.level_max
-		local archive_header_arg = is_encrypted and archive_config.header_arg or ""
-		local archive_passwordable = archive_config.passwordable
-		local archive_compress_args = archive_config.compress_args
-
-		if archive_passwordable and is_password then
-			local password_args = get_password_args(archive_cmd, is_encrypted, archive_header_arg)
-			if not password_args then
+		if state.password then
+			local password = input_password()
+			if not password then
 				return
 			end
-			for _, arg in ipairs(password_args) do
-				table.insert(archive_args, arg)
+			config.args[#config.args + 1] = (state.headers and config.cmd == "rar" and "-hp" or "-p") .. password
+			for _, arg in ipairs(config.password_args or {}) do
+				config.args[#config.args + 1] = arg
 			end
-			for _, arg in ipairs(archive_config.password_args) do
-				table.insert(archive_args, arg)
+		end
+		if state.headers and config.cmd ~= "rar" then
+			config.args[#config.args + 1] = config.header_arg
+		end
+		if config.level_arg then
+			if state.ask_level then
+				local accepted
+				state.level, accepted = input_level(config, state.level)
+				if not accepted then
+					return
+				end
+			end
+			if state.level then
+				if state.level < config.level_min or state.level > config.level_max then
+					notify("The selected compression level is unsupported by this archive format", "error")
+					return
+				end
+				add_compression_level(
+					config.compress and config.compress_args or config.args,
+					config.level_arg,
+					tostring(state.level)
+				)
 			end
 		end
 
-		if is_encrypted and archive_header_arg ~= "" and archive_cmd ~= "rar" then
-			table.insert(archive_args, archive_header_arg)
-		end
-
-		if archive_level_arg ~= "" and is_level then
-			local output_level, level_event = ya.input({
-				title = string.format("Enter compression level (%s - %s)", archive_level_min, archive_level_max),
-				pos = { "top-center", y = 3, w = 40 },
-			})
-			if level_event ~= 1 then
-				return
-			end
-			local level_num = tonumber(output_level)
-			if
-				level_num
-				and level_num % 1 == 0
-				and level_num >= archive_level_min
-				and level_num <= archive_level_max
-			then
-				local target_args = archive_compress == "" and archive_args or archive_compress_args
-				add_compression_level(target_args, archive_level_arg, output_level)
-			else
-				notify("Invalid level specified. Using defaults.", "warn")
-			end
-		end
-
-		local original_name = output_name
 		-- Backends infer their format from the temporary filename, including comic archives.
-		local processed_name = canonical_archive_name(output_name)
-		output_name = processed_name
-
-		if archive_compress ~= "" then
-			output_name = output_name:match("(.*%.tar)") or output_name
-		end
-
-		local temp_dir, temp_err = create_temp_dir(archive_dir, filenames, output_dir)
+		local filename = canonical_archive_name(name)
+		local intermediate = config.compress and filename:match("(.*%.tar)") or filename
+		local temp_dir, err = create_temp_dir(root, filenames, output_dir)
 		if not temp_dir then
-			notify("Failed to create a temporary directory: " .. tostring(temp_err), "error")
+			notify("Failed to create a temporary directory: " .. tostring(err), "error")
 			return
 		end
-
-		local temp_output_url = combine_url(temp_dir, output_name)
+		local temp_output = combine_url(temp_dir, intermediate)
 
 		-- Custom tasks require Yazi 26.8. An entry already owns a plugin worker.
 		local cancel_scope
@@ -521,7 +566,7 @@ return {
 			cancel_scope = scope:child()
 			return ya.task("custom", { pool = "none", progress = false, track = true, scope = scope })
 		end)
-		local task = supported and option:name("Compress " .. original_name):spawn() or nil
+		local task = supported and option:name("Compress " .. name):spawn() or nil
 		cancel_scope = task and cancel_scope or nil
 		if task and not task:acquire() then
 			cleanup_temp_dir(temp_dir)
@@ -537,73 +582,66 @@ return {
 			end
 			cleanup_temp_dir(temp_dir)
 		end
-
 		local function run(command, phase)
 			if task then
 				task:log(phase)
 			end
-			local status, err = run_command(command, cancel_scope)
+			local status, run_err = run_command(command, cancel_scope)
 			if status and status.success then
 				return true
 			end
-			fail(phase .. ": " .. tostring(err))
-			return false
+			fail(phase .. ": " .. tostring(run_err))
 		end
 
 		if
 			not run(
-				Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(archive_dir),
-				"Create " .. ya.quote(output_name) .. " with " .. archive_cmd
+				Command(config.cmd):arg(config.args):arg(temp_output):arg(filenames):cwd(root),
+				"Create " .. ya.quote(name) .. " with " .. config.cmd
 			)
 		then
 			return
 		end
-		if archive_compress ~= "" then
-			local command = Command(archive_compress):arg(archive_compress_args)
-			local compressed_output = combine_url(temp_dir, processed_name)
-			if archive_compress:match("^7z") or archive_compress == "lha" then
-				command:arg(compressed_output):arg(temp_output_url)
-			elseif archive_compress == "lz4" then
-				command:arg(temp_output_url):arg(compressed_output)
+		if config.compress then
+			local command = Command(config.compress):arg(config.compress_args)
+			local target = combine_url(temp_dir, filename)
+			if config.compress:match("^7z") or config.compress == "lha" then
+				command:arg(target):arg(temp_output)
+			elseif config.compress == "lz4" then
+				command:arg(temp_output):arg(target)
 			else
-				command:arg(temp_output_url)
+				command:arg(temp_output)
 			end
-			if not run(command, "Compress " .. ya.quote(output_name) .. " with " .. archive_compress) then
+			if not run(command, "Compress " .. ya.quote(name) .. " with " .. config.compress) then
 				return
 			end
 		end
-
 		if cancel_scope and cancel_scope:cancelled() then
 			cleanup_temp_dir(temp_dir)
 			return
 		end
-		local final_output_url = combine_url(output_dir, original_name)
-		local temp_url_processed = combine_url(temp_dir, processed_name)
-		local unique_file, unique_file_err = fs.unique("file", Url(final_output_url))
-		if not unique_file then
-			fail("Failed to choose an archive filename: " .. tostring(unique_file_err))
+
+		local to, reserve_err = fs.unique("file", Url(output_dir):join(name))
+		if not to then
+			fail("Failed to choose an archive filename: " .. tostring(reserve_err))
 			return
 		end
-		final_output_url = tostring(unique_file)
-		local from, to = Url(temp_url_processed), Url(final_output_url)
 		local to_name = to.name
-		local moved, err = fs.rename(from, to)
-		if not moved and err and err.kind == "CrossesDevices" then
-			moved, err = fs.copy(from, to)
+		local from = Url(temp_dir):join(filename)
+		local moved, move_err = fs.rename(from, to)
+		if not moved and move_err and move_err.kind == "CrossesDevices" then
+			moved, move_err = fs.copy(from, to)
 		end
 		if not moved or (cancel_scope and cancel_scope:cancelled()) then
 			fs.remove("file", to)
-			fail("Failed to save archive " .. ya.quote(final_output_url) .. ": " .. tostring(err))
+			fail("Failed to save archive " .. ya.quote(tostring(to)) .. ": " .. tostring(move_err))
 			return
 		end
-
 		cleanup_temp_dir(temp_dir)
 		if task then
 			task:succeed({ to })
 		end
-
-		if not is_silent_success then
-			notify(string.format("Successfully created archive: %s", ya.quote(to_name)), "info")
+		if not state.silent then
+			notify("Successfully created archive: " .. ya.quote(to_name), "info")
 		end
 	end,
 }
