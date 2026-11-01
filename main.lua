@@ -3,8 +3,27 @@
 -- Check for windows
 local is_windows = ya.target_family() == "windows"
 
+local archive_aliases = {
+	cbz = "zip",
+	cb7 = "7z",
+	cbr = "rar",
+	tgz = "tar.gz",
+	txz = "tar.xz",
+	tbz = "tar.bz2",
+	tbz2 = "tar.bz2",
+	tzst = "tar.zst",
+	tlz4 = "tar.lz4",
+}
+
+local function canonical_archive_name(name)
+	return (name:gsub("%.([^%.]+)$", function(ext)
+		return "." .. (archive_aliases[ext] or ext)
+	end))
+end
+
 -- Allow dots when matching file extension arguments
 local function extension_pattern(ext)
+	ext = archive_aliases[ext] or ext
 	return "%." .. ext:gsub("%.", "%%.") .. "$"
 end
 
@@ -314,6 +333,7 @@ local archive_commands = {
 
 -- Function for command matching
 local function find_archive_command(output_name, password_required)
+	output_name = canonical_archive_name(output_name)
 	for pattern, cmd_list in pairs(archive_commands) do
 		if output_name:match(pattern) then
 			for _, cmd in ipairs(cmd_list) do
@@ -469,6 +489,9 @@ return {
 
 		-- Store the original output name for later use
 		local original_name = output_name
+		-- Backends infer their format from the temporary filename, including comic archives.
+		local processed_name = canonical_archive_name(output_name)
+		output_name = processed_name
 
 		-- If compression is needed, adjust the output name to exclude extensions like ".tar"
 		if archive_compress ~= "" then
@@ -518,7 +541,7 @@ return {
 
 			-- Check if using 7z for compression (requires output file argument)
 			if archive_compress:match("^7z") then
-				local compressed_output = combine_url(temp_dir, original_name)
+				local compressed_output = combine_url(temp_dir, processed_name)
 				compress_status, compress_err = Command(archive_compress)
 					:arg(archive_compress_args)
 					:arg(compressed_output)
@@ -549,7 +572,7 @@ return {
 
 		-- Move the final file from the temporary directory to the output directory
 		local final_output_url = combine_url(output_dir, original_name)
-		local temp_url_processed = combine_url(temp_dir, original_name)
+		local temp_url_processed = combine_url(temp_dir, processed_name)
 		final_output_url = tostring(fs.unique("file", Url(final_output_url)))
 		local from, to = Url(temp_url_processed), Url(final_output_url)
 		local move_status, move_err = fs.rename(from, to)

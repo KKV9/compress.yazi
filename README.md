@@ -29,15 +29,15 @@
 
 | Extension     | Default Command   | 7z Command     | Bsdtar Command (Win10+ & Unix) |
 | ------------- | ----------------- | -------------- | ------------------------------ |
-| `.zip`        | `zip -r`          | `7z a -tzip`   | `tar -caf`                     |
-| `.7z`         | `7z a`            | `7z a`         |                                |
-| `.rar`        | `rar a`           |                |                                |
+| `.zip`, `.cbz` | `zip -r`          | `7z a -tzip`   | `tar -caf`                     |
+| `.7z`, `.cb7`  | `7z a`            | `7z a`         |                                |
+| `.rar`, `.cbr` | `rar a`           |                |                                |
 | `.tar`        | `tar rpf`         |                | `tar rpf`                      |
-| `.tar.gz`     | `tar rpf + gzip`  | `7z a -tgzip`  | `tar -czf`                     |
-| `.tar.xz`     | `tar rpf + xz`    | `7z a -txz`    | `tar -cJf`                     |
-| `.tar.bz2`    | `tar rpf + bzip2` | `7z a -tbzip2` | `tar -cjf`                     |
-| `.tar.zst`    | `tar rpf + zstd`  |                | `tar --zstd -cf`               |
-| `.tar.lz4`    | `tar rpf + lz4`   |                |                                |
+| `.tar.gz`, `.tgz`     | `tar rpf + gzip`  | `7z a -tgzip`  | `tar -czf`                     |
+| `.tar.xz`, `.txz`     | `tar rpf + xz`    | `7z a -txz`    | `tar -cJf`                     |
+| `.tar.bz2`, `.tbz`, `.tbz2`    | `tar rpf + bzip2` | `7z a -tbzip2` | `tar -cjf`                     |
+| `.tar.zst`, `.tzst`    | `tar rpf + zstd`  |                | `tar --zstd -cf`               |
+| `.tar.lz4`, `.tlz4`    | `tar rpf + lz4`   |                |                                |
 | `.tar.lha`    | `tar rpf + lha`   |                |                                |
 
 
