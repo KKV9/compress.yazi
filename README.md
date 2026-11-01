@@ -27,18 +27,18 @@
 
 ## 📦 Supported File Types
 
-| Extension     | Default Command   | 7z Command     | Bsdtar Command (Win10+ & Unix) |
-| ------------- | ----------------- | -------------- | ------------------------------ |
-| `.zip`, `.cbz` | `zip -r`          | `7z a -tzip`   | `tar -caf`                     |
-| `.7z`, `.cb7`  | `7z a`            | `7z a`         |                                |
-| `.rar`, `.cbr` | `rar a`           |                |                                |
-| `.tar`        | `tar rpf`         |                | `tar rpf`                      |
-| `.tar.gz`, `.tgz`     | `tar rpf + gzip`  | `7z a -tgzip`  | `tar -czf`                     |
-| `.tar.xz`, `.txz`     | `tar rpf + xz`    | `7z a -txz`    | `tar -cJf`                     |
-| `.tar.bz2`, `.tbz`, `.tbz2`    | `tar rpf + bzip2` | `7z a -tbzip2` | `tar -cjf`                     |
-| `.tar.zst`, `.tzst`    | `tar rpf + zstd`  |                | `tar --zstd -cf`               |
-| `.tar.lz4`, `.tlz4`    | `tar rpf + lz4`   |                |                                |
-| `.tar.lha`    | `tar rpf + lha`   |                |                                |
+| Extension | Default Command | 7-Zip Command | BSD tar Command |
+| --- | --- | --- | --- |
+| `.zip`, `.cbz` | `zip -r` | `7z a -tzip` | `tar --format=zip -cf` |
+| `.7z`, `.cb7` | `7z a -t7z` | `7z a -t7z` | |
+| `.rar`, `.cbr` | `rar a` | | |
+| `.tar` | `tar -cf` | | `tar -cf` |
+| `.tar.gz`, `.tgz` | `tar -cf + gzip` | `tar -cf + 7z a -tgzip` | `tar -czf` |
+| `.tar.xz`, `.txz` | `tar -cf + xz` | `tar -cf + 7z a -txz` | `tar -cJf` |
+| `.tar.bz2`, `.tbz`, `.tbz2` | `tar -cf + bzip2` | `tar -cf + 7z a -tbzip2` | `tar -cjf` |
+| `.tar.zst`, `.tzst` | `tar -cf + zstd` | | `tar --zstd -cf` |
+| `.tar.lz4`, `.tlz4` | `tar -cf + lz4` | | `tar --lz4 -cf` |
+| `.tar.lha` | `tar -cf + lha` | | |
 
 
 ## ⚡️ Installation
@@ -89,7 +89,7 @@ desc = "Archive selected files (password)"
 
 [[mgr.prepend_keymap]]
 on   = [ "c", "a", "h" ]
-run  = "plugin compress -ph"
+run  = "plugin compress '-ph 7z'"
 desc = "Archive selected files (password+header)"
 
 [[mgr.prepend_keymap]]
@@ -99,7 +99,7 @@ desc = "Archive selected files (compression level)"
 
 [[mgr.prepend_keymap]]
 on   = [ "c", "a", "u" ]
-run  = "plugin compress -phl"
+run  = "plugin compress '-phl 7z'"
 desc = "Archive selected files (password+header+level)"
 ```
 
@@ -123,7 +123,7 @@ desc = "Archive selected files (password+header+level)"
 - Combine flags for more power!
 - when separating flags with spaces, make sure to single quote them (eg., `'-ph rar'`)
 - `-p` Password protect (zip/7z/rar)
-- `-h` Encrypt header (7z/rar)
+- `-h` Encrypt header and require a password (7z/rar)
 - `-l` Set compression level (all compression algorithims)
 - `-s` Silence success message
 - `<extention>` Specify a default extention (eg., `7z`, `tar.gz`)
@@ -143,6 +143,7 @@ desc = "Archive selected files to rar (password+level)"
 
 - The file extension **must** match a supported type.
 - The required compression tool **must** be installed and in your `PATH` (7zip/rar etc.).
+- Password-protected ZIP/CBZ archives use AES-256 and require 7-Zip and an AES-compatible reader.
 - If no extention is provided, the default extention (zip) will be appended automatically.
 - If you leave the filename blank, the plugin will use the selected filename or parent directory, when multiple files are selected, to name the archive.
 

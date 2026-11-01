@@ -1,6 +1,5 @@
 --- @since 26.5.6
 
--- Check for windows
 local is_windows = ya.target_family() == "windows"
 
 local archive_aliases = {
@@ -21,26 +20,21 @@ local function canonical_archive_name(name)
 	end))
 end
 
--- Allow dots when matching file extension arguments
 local function extension_pattern(ext)
 	ext = archive_aliases[ext] or ext
 	return "%." .. ext:gsub("%.", "%%.") .. "$"
 end
 
--- Function to check valid filename
 local function is_valid_filename(name)
-	-- Trim whitespace from both ends
 	name = name:match("^%s*(.-)%s*$")
 	if name == "" then
 		return false
 	end
 	if is_windows then
-		-- Windows forbidden chars and reserved names
 		if name:find('[<>:"/\\|%?%*]') then
 			return false
 		end
 	else
-		-- Unix forbidden chars
 		if name:find("/") or name:find("%z") then
 			return false
 		end
@@ -48,7 +42,6 @@ local function is_valid_filename(name)
 	return true
 end
 
--- Function to send notifications
 local function notify(message, level)
 	ya.notify({
 		title = "Archive",
@@ -58,22 +51,35 @@ local function notify(message, level)
 	})
 end
 
--- Function to check if command is available
-local function is_command_available(cmd)
-	return Command(cmd):arg("--help"):status() ~= nil
+local command_cache = {}
+local function is_command_available(cmd, bsdtar)
+	local key = cmd .. (bsdtar and ":bsdtar:" .. tostring(bsdtar) or "")
+	if command_cache[key] == nil then
+		if bsdtar then
+			local version_key = cmd .. ":version"
+			if command_cache[version_key] == nil then
+				local output = Command(cmd):arg("--version"):output()
+				command_cache[version_key] = output and output.status.success and output.stdout or ""
+			end
+			local version = command_cache[version_key]
+			command_cache[key] = version:find("bsdtar", 1, true) ~= nil
+				and (bsdtar == true or version:find(bsdtar, 1, true) ~= nil)
+		else
+			local status = Command(cmd):arg("--help"):status()
+			command_cache[key] = status ~= nil and status.code ~= nil
+		end
+	end
+	return command_cache[key]
 end
 
--- Function to find first available command from list
-local function find_command_name(cmd_list)
-	for _, cmd in ipairs(cmd_list) do
-		if is_command_available(cmd) then
+local function find_command_name(cmd_list, bsdtar)
+	for _, cmd in ipairs(type(cmd_list) == "table" and cmd_list or { cmd_list }) do
+		if is_command_available(cmd, bsdtar) then
 			return cmd
 		end
 	end
-	return cmd_list[1] -- Return first command as fallback
 end
 
--- Function to append filename to its parent directory url
 local function combine_url(path, file)
 	local path_url = Url(path)
 	local file_url = Url(file)
@@ -112,10 +118,9 @@ local selected_or_hovered = ya.sync(function()
 		filenames[#filenames + 1] = "." .. (is_windows and "\\" or "/") .. tostring(url:strip_prefix(root))
 	end
 
-	return { [tostring(root)] = filenames }, names, tostring(tab.current.cwd)
+	return tostring(root), filenames, names, tostring(tab.current.cwd)
 end)
 
--- Function to cleanup temporary directory
 local function cleanup_temp_dir(temp_dir)
 	local status, err = fs.remove("dir_all", Url(temp_dir))
 	if not status then
@@ -128,22 +133,26 @@ local function cleanup_temp_dir(temp_dir)
 	return true
 end
 
--- Function for compression level
+local function run_command(command)
+	local output, err = command:stdout(Command.NULL):stderr(Command.PIPED):output()
+	if not output then
+		return nil, tostring(err)
+	end
+	return output.status, output.stderr ~= "" and output.stderr or "exit code " .. tostring(output.status.code)
+end
+
 local function add_compression_level(target_args, level_arg, level_value)
 	if type(level_arg) == "table" then
-		-- Insert each element except last
 		for i = 1, #level_arg - 1 do
 			table.insert(target_args, i, level_arg[i])
 		end
-		-- Add the level value with the last element
 		table.insert(target_args, #level_arg, level_arg[#level_arg] .. level_value)
 	else
-		-- Single string argument
-		table.insert(target_args, 1, level_arg .. level_value)
+		-- LHA requires its command before compression switches.
+		table.insert(target_args, level_arg == "-o" and 2 or 1, level_arg .. level_value)
 	end
 end
 
--- Function for password handling
 local function get_password_args(archive_cmd, encrypted, header_arg)
 	local output_password, event = ya.input({
 		title = "Enter password:",
@@ -167,37 +176,41 @@ local function get_password_args(archive_cmd, encrypted, header_arg)
 		notify("Passwords do not match", "error")
 		return nil
 	end
-	-- Handling for RAR with encryption
 	if archive_cmd == "rar" and encrypted then
 		return { header_arg .. output_password }
 	end
-	return { (archive_cmd == "zip" and "-P" or "-p") .. output_password }
+	return { "-p" .. output_password }
 end
 
--- Table of archive commands
+-- -spd keeps literal filenames from expanding to unselected files.
+local sevenzip_commands = { "7zz", "7z", "7za" }
+local tar_commands = { "tar", "bsdtar" }
+
 local archive_commands = {
 	["%.zip$"] = {
-		{ command = "zip", args = { "-r" }, level_arg = "-", level_min = 0, level_max = 9, passwordable = true },
+		{ command = "zip", args = { "-r" }, level_arg = "-", level_min = 0, level_max = 9 },
 		{
-			command = { "7z", "7zz", "7za" },
-			args = { "a", "-tzip" },
+			command = sevenzip_commands,
+			args = { "a", "-tzip", "-spd" },
 			level_arg = "-mx=",
 			level_min = 0,
 			level_max = 9,
 			passwordable = true,
+			password_args = { "-mem=AES256" },
 		},
 		{
-			command = { "tar", "bsdtar" },
-			args = { "-caf" },
-			level_arg = { "--option", "compression-level=" },
-			level_min = 1,
+			command = { "bsdtar", "tar" },
+			bsdtar = true,
+			args = { "--format=zip", "-cf" },
+			level_arg = { "--options", "zip:compression-level=" },
+			level_min = 0,
 			level_max = 9,
 		},
 	},
 	["%.7z$"] = {
 		{
-			command = { "7z", "7zz", "7za" },
-			args = { "a" },
+			command = sevenzip_commands,
+			args = { "a", "-t7z", "-spd" },
 			level_arg = "-mx=",
 			level_min = 0,
 			level_max = 9,
@@ -216,163 +229,110 @@ local archive_commands = {
 			passwordable = true,
 		},
 	},
-	["%.tar%.gz$"] = {
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-",
-			level_min = 1,
-			level_max = 9,
-			compress = "gzip",
-		},
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-mx=",
-			level_min = 1,
-			level_max = 9,
-			compress = "7z",
-			compress_args = { "a", "-tgzip" },
-		},
-		{
-			command = { "tar", "bsdtar" },
-			args = { "-czf" },
-			level_arg = { "--option", "gzip:compression-level=" },
-			level_min = 1,
-			level_max = 9,
-		},
-	},
-	["%.tar%.xz$"] = {
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-",
-			level_min = 1,
-			level_max = 9,
-			compress = "xz",
-		},
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-mx=",
-			level_min = 1,
-			level_max = 9,
-			compress = "7z",
-			compress_args = { "a", "-txz" },
-		},
-		{
-			command = { "tar", "bsdtar" },
-			args = { "-cJf" },
-			level_arg = { "--option", "xz:compression-level=" },
-			level_min = 1,
-			level_max = 9,
-		},
-	},
-	["%.tar%.bz2$"] = {
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-",
-			level_min = 1,
-			level_max = 9,
-			compress = "bzip2",
-		},
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-mx=",
-			level_min = 1,
-			level_max = 9,
-			compress = "7z",
-			compress_args = { "a", "-tbzip2" },
-		},
-		{
-			command = { "tar", "bsdtar" },
-			args = { "-cjf" },
-			level_arg = { "--option", "bzip2:compression-level=" },
-			level_min = 1,
-			level_max = 9,
-		},
-	},
-	["%.tar%.zst$"] = {
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-",
-			level_min = 1,
-			level_max = 22,
-			compress = "zstd",
-			compress_args = { "--ultra" },
-		},
-	},
-	["%.tar%.lz4$"] = {
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-",
-			level_min = 1,
-			level_max = 12,
-			compress = "lz4",
-		},
-	},
-	["%.tar%.lha$"] = {
-		{
-			command = { "tar", "bsdtar" },
-			args = { "rpf" },
-			level_arg = "-o",
-			level_min = 5,
-			level_max = 7,
-			compress = "lha",
-			compress_args = { "-a" },
-		},
-	},
-	["%.tar$"] = {
-		{ command = { "tar", "bsdtar" }, args = { "rpf" } },
-	},
+	["%.tar$"] = { { command = tar_commands, args = { "-cf" } } },
 }
 
--- Function for command matching
-local function find_archive_command(output_name, password_required)
+local compressors = {
+	gz = { command = "gzip", level_max = 9, sevenzip = "gzip", bsdtar = "-z", option = "gzip", library = "zlib" },
+	xz = { command = "xz", level_max = 9, sevenzip = "xz", bsdtar = "-J", option = "xz", library = "liblzma" },
+	bz2 = { command = "bzip2", level_max = 9, sevenzip = "bzip2", bsdtar = "-j", option = "bzip2", library = "bz2lib" },
+	zst = {
+		command = "zstd",
+		args = { "--ultra" },
+		level_max = 22,
+		bsdtar = "--zstd",
+		option = "zstd",
+		library = "libzstd",
+	},
+	lz4 = {
+		command = "lz4",
+		level_max = 12,
+		bsdtar = "--lz4",
+		option = "lz4",
+		library = "liblz4",
+		bsdtar_level_max = 9,
+	},
+	lha = { command = "lha", args = { "a" }, level_arg = "-o", level_min = 5, level_max = 7 },
+}
+
+for ext, compressor in pairs(compressors) do
+	local candidates = {
+		{
+			command = tar_commands,
+			args = { "-cf" },
+			compress = compressor.command,
+			compress_args = compressor.args,
+			level_arg = compressor.level_arg or "-",
+			level_min = compressor.level_min or 1,
+			level_max = compressor.level_max,
+		},
+	}
+	if compressor.sevenzip then
+		candidates[#candidates + 1] = {
+			command = tar_commands,
+			args = { "-cf" },
+			compress = sevenzip_commands,
+			compress_args = { "a", "-t" .. compressor.sevenzip, "-spd" },
+			level_arg = "-mx=",
+			level_min = 1,
+			level_max = 9,
+		}
+	end
+	if compressor.bsdtar then
+		candidates[#candidates + 1] = {
+			command = { "bsdtar", "tar" },
+			bsdtar = compressor.library,
+			args = { compressor.bsdtar, "-cf" },
+			level_arg = { "--options", compressor.option .. ":compression-level=" },
+			level_min = 1,
+			level_max = compressor.bsdtar_level_max or compressor.level_max,
+		}
+	end
+	archive_commands[extension_pattern("tar." .. ext)] = candidates
+end
+
+local function find_archive_command(output_name, password_required, headers_required)
 	output_name = canonical_archive_name(output_name)
 	for pattern, cmd_list in pairs(archive_commands) do
 		if output_name:match(pattern) then
 			for _, cmd in ipairs(cmd_list) do
-				-- Check if archive command is available
-				local cmd_name = type(cmd.command) == "table" and find_command_name(cmd.command) or cmd.command
-				if (not password_required or cmd.passwordable) and is_command_available(cmd_name) then
-					-- Check if compress command (if listed) is available
-					if not cmd.compress or is_command_available(cmd.compress) then
+				local cmd_name = find_command_name(cmd.command, cmd.bsdtar)
+				if
+					cmd_name
+					and (not password_required or cmd.passwordable)
+					and (not headers_required or cmd.header_arg)
+				then
+					local compress = cmd.compress and find_command_name(cmd.compress)
+					if not cmd.compress or compress then
 						return {
 							cmd = cmd_name,
 							args = { table.unpack(cmd.args) },
-							compress = cmd.compress or "",
+							compress = compress or "",
 							level_arg = cmd.level_arg or "",
 							level_min = cmd.level_min,
 							level_max = cmd.level_max,
 							header_arg = cmd.header_arg or "",
 							passwordable = cmd.passwordable or false,
+							password_args = cmd.password_args or {},
 							compress_args = { table.unpack(cmd.compress_args or {}) },
 						}
 					end
 				end
 			end
-			-- Pattern matched but no suitable command found
 			return nil
 		end
 	end
-	-- No pattern matched - unsupported extension
 	return false
 end
 
 return {
 	entry = function(_, job)
+		command_cache = {}
 		local is_password, is_encrypted, is_level, is_silent_success = false, false, false, false
 		local default_extension = "zip"
-		-- Parse flags and default extension
 		if job.args then
 			for _, arg in ipairs(job.args) do
 				if arg:match("^%-(%w+)$") then
-					-- Handle combined flags (e.g., -phl)
 					for flag in arg:sub(2):gmatch(".") do
 						if flag == "p" then
 							is_password = true
@@ -382,10 +342,11 @@ return {
 							is_level = true
 						elseif flag == "s" then
 							is_silent_success = true
+						else
+							notify("Unknown flag: -" .. flag, "warn")
 						end
 					end
 				elseif arg:match("^[%w%.]+$") then
-					-- Handle default extension (e.g., 7z, zip)
 					if archive_commands[extension_pattern(arg)] then
 						default_extension = arg
 					else
@@ -396,18 +357,16 @@ return {
 				end
 			end
 		end
+		is_password = is_password or is_encrypted
 
-		-- Exit visual mode
 		ya.emit("escape", { visual = true })
 
-		-- Define file table and output_dir (pwd)
-		local path_fnames, fnames, output_dir = selected_or_hovered()
-		if not path_fnames then
+		local archive_dir, filenames, fnames, output_dir = selected_or_hovered()
+		if not archive_dir then
 			notify("Select files with a shared parent directory", "error")
 			return
 		end
 
-		-- Get archive filename
 		local output_name, event = ya.input({
 			title = "Create archive:",
 			pos = { "top-center", y = 3, w = 40 },
@@ -416,23 +375,19 @@ return {
 			return
 		end
 
-		-- Determine the default name for the archive
 		local default_name = #fnames == 1 and fnames[1] or Url(output_dir).name
 		output_name = output_name == "" and string.format("%s.%s", default_name, default_extension) or output_name
 
-		-- Add default extension if none is specified
 		if not output_name:match("%.%w+$") then
 			output_name = string.format("%s.%s", output_name, default_extension)
 		end
 
-		-- Validate the final archive filename
 		if not is_valid_filename(output_name) then
 			notify("Invalid archive filename", "error")
 			return
 		end
 
-		-- Command matching
-		local archive_config = find_archive_command(output_name, is_password)
+		local archive_config = find_archive_command(output_name, is_password, is_encrypted)
 		if archive_config == false then
 			notify("Unsupported file extension", "error")
 			return
@@ -441,7 +396,6 @@ return {
 			return
 		end
 
-		-- Extract configuration
 		local archive_cmd = archive_config.cmd
 		local archive_args = archive_config.args
 		local archive_compress = archive_config.compress
@@ -452,7 +406,6 @@ return {
 		local archive_passwordable = archive_config.passwordable
 		local archive_compress_args = archive_config.compress_args
 
-		-- Password handling
 		if archive_passwordable and is_password then
 			local password_args = get_password_args(archive_cmd, is_encrypted, archive_header_arg)
 			if not password_args then
@@ -461,14 +414,15 @@ return {
 			for _, arg in ipairs(password_args) do
 				table.insert(archive_args, arg)
 			end
+			for _, arg in ipairs(archive_config.password_args) do
+				table.insert(archive_args, arg)
+			end
 		end
 
-		-- Add header arg if selected for 7z
 		if is_encrypted and archive_header_arg ~= "" and archive_cmd ~= "rar" then
 			table.insert(archive_args, archive_header_arg)
 		end
 
-		-- Use extracted compression level
 		if archive_level_arg ~= "" and is_level then
 			local output_level, level_event = ya.input({
 				title = string.format("Enter compression level (%s - %s)", archive_level_min, archive_level_max),
@@ -477,9 +431,13 @@ return {
 			if level_event ~= 1 then
 				return
 			end
-			-- Validate user input for compression level
 			local level_num = tonumber(output_level)
-			if level_num and level_num >= archive_level_min and level_num <= archive_level_max then
+			if
+				level_num
+				and level_num % 1 == 0
+				and level_num >= archive_level_min
+				and level_num <= archive_level_max
+			then
 				local target_args = archive_compress == "" and archive_args or archive_compress_args
 				add_compression_level(target_args, archive_level_arg, output_level)
 			else
@@ -487,132 +445,116 @@ return {
 			end
 		end
 
-		-- Store the original output name for later use
 		local original_name = output_name
 		-- Backends infer their format from the temporary filename, including comic archives.
 		local processed_name = canonical_archive_name(output_name)
 		output_name = processed_name
 
-		-- If compression is needed, adjust the output name to exclude extensions like ".tar"
 		if archive_compress ~= "" then
 			output_name = output_name:match("(.*%.tar)") or output_name
 		end
 
-		-- Create a temporary directory for intermediate files
 		local temp_dir_name = ".tmp_compress"
 		local temp_dir = combine_url(output_dir, temp_dir_name)
 		temp_dir = tostring(fs.unique("dir", Url(temp_dir)))
 
-		-- Attempt to create the temporary directory
 		local temp_dir_status, temp_dir_err = fs.create("dir_all", Url(temp_dir))
 		if not temp_dir_status then
-			-- Notify the user if the temporary directory creation fails
 			notify(string.format("Failed to create temp directory, error code: %s", tostring(temp_dir_err)), "error")
 			return
 		end
 
-		-- Define the temporary output file path within the temporary directory
 		local temp_output_url = combine_url(temp_dir, output_name)
 
-		-- Add files to the output archive
-		for filepath, filenames in pairs(path_fnames) do
-			-- Execute the archive command for each path and its respective files
-			local archive_status, archive_err =
-				Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(filepath):spawn():wait()
-			if not archive_status or not archive_status.success then
-				-- Notify the user if the archiving process fails and clean up the temporary directory
-				notify(
-					string.format(
-						"Failed to create archive %s with '%s', error: %s",
-						ya.quote(output_name),
-						archive_cmd,
-						tostring(archive_err)
-					),
-					"error"
-				)
-				cleanup_temp_dir(temp_dir)
-				return
-			end
+		local function fail(reason)
+			notify(reason, "error")
+			cleanup_temp_dir(temp_dir)
 		end
 
-		-- If compression is required, execute the compression command
+		local archive_status, archive_err =
+			run_command(Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(archive_dir))
+		if not archive_status or not archive_status.success then
+			fail(
+				string.format(
+					"Failed to create archive %s with '%s', error: %s",
+					ya.quote(output_name),
+					archive_cmd,
+					tostring(archive_err)
+				)
+			)
+			return
+		end
+
 		if archive_compress ~= "" then
 			local compress_status, compress_err
 
-			-- Check if using 7z for compression (requires output file argument)
-			if archive_compress:match("^7z") then
+			if archive_compress:match("^7z") or archive_compress == "lha" then
 				local compressed_output = combine_url(temp_dir, processed_name)
-				compress_status, compress_err = Command(archive_compress)
-					:arg(archive_compress_args)
-					:arg(compressed_output)
-					:arg(temp_output_url)
-					:spawn()
-					:wait()
+				compress_status, compress_err = run_command(
+					Command(archive_compress):arg(archive_compress_args):arg(compressed_output):arg(temp_output_url)
+				)
+			elseif archive_compress == "lz4" then
+				compress_status, compress_err = run_command(
+					Command(archive_compress)
+						:arg(archive_compress_args)
+						:arg(temp_output_url)
+						:arg(combine_url(temp_dir, processed_name))
+				)
 			else
-				-- Native compression tools (gzip, xz, bzip2, etc.) compress in-place
 				compress_status, compress_err =
-					Command(archive_compress):arg(archive_compress_args):arg(temp_output_url):spawn():wait()
+					run_command(Command(archive_compress):arg(archive_compress_args):arg(temp_output_url))
 			end
 
 			if not compress_status or not compress_status.success then
-				-- Notify the user if the compression process fails and clean up the temporary directory
-				notify(
+				fail(
 					string.format(
 						"Failed to compress archive %s with '%s', error: %s",
 						ya.quote(output_name),
 						archive_compress,
 						tostring(compress_err)
-					),
-					"error"
+					)
 				)
-				cleanup_temp_dir(temp_dir)
 				return
 			end
 		end
 
-		-- Move the final file from the temporary directory to the output directory
 		local final_output_url = combine_url(output_dir, original_name)
 		local temp_url_processed = combine_url(temp_dir, processed_name)
 		final_output_url = tostring(fs.unique("file", Url(final_output_url)))
 		local from, to = Url(temp_url_processed), Url(final_output_url)
+		local to_name = to.name
 		local move_status, move_err = fs.rename(from, to)
 		if not move_status then
 			if move_err and move_err.kind == "CrossesDevices" then
 				local copy_status, copy_err = fs.copy(from, to)
 				if not copy_status then
-					notify(
+					fail(
 						string.format(
 							"Failed to copy across devices %s to %s, error: %s",
 							ya.quote(from.name),
 							ya.quote(to.name),
 							copy_err and tostring(copy_err.kind) or "unknown"
-						),
-						"error"
+						)
 					)
-					cleanup_temp_dir(temp_dir)
 					return
 				end
 			else
-				notify(
+				fail(
 					string.format(
 						"Failed to move %s to %s, error: %s",
 						ya.quote(from.name),
 						ya.quote(to.name),
 						move_err and tostring(move_err.kind) or "unknown"
-					),
-					"error"
+					)
 				)
-				cleanup_temp_dir(temp_dir)
 				return
 			end
 		end
 
-		-- Cleanup the temporary directory after successful operation
 		cleanup_temp_dir(temp_dir)
 
-		-- Notify user of success
 		if not is_silent_success then
-			notify(string.format("Successfully created archive: %s", ya.quote(to.name)), "info")
+			notify(string.format("Successfully created archive: %s", ya.quote(to_name)), "info")
 		end
 	end,
 }
