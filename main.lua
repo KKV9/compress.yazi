@@ -410,8 +410,9 @@ return {
 	entry = function(_, job)
 		ya.async(function()
 			command_cache = {}
-			local state = { extension = "zip" }
-			for _, arg in ipairs(job.args or {}) do
+			local args = job.args or {}
+			local state = { extension = "zip", interactive = #args == 0 }
+			for _, arg in ipairs(args) do
 				if arg:match("^%-%w+$") then
 					for flag in arg:sub(2):gmatch(".") do
 						local option = option_flags[flag]

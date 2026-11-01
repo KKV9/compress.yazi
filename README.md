@@ -45,21 +45,18 @@ Password-protected ZIP/CBZ archives use AES-256 and require 7-Zip and an AES-com
 
 ## Usage
 
-Add bindings to `keymap.toml`:
+Add a binding to `keymap.toml`:
 
 ```toml
 [[mgr.prepend_keymap]]
-on = [ "c", "a" ]
+on = "C"
 run = "plugin compress"
 desc = "Create archive"
-
-[[mgr.prepend_keymap]]
-on = [ "c", "i" ]
-run = "plugin compress -i"
-desc = "Configure archive options"
 ```
 
-Select files, or leave the selection empty to use the hovered file. Run the plugin and enter an archive name. Leave the name blank to use the selected filename or current directory name. Existing archives are preserved by choosing a unique filename.
+Select files, or leave the selection empty to use the hovered file. Run the plugin, choose options and enter an archive name. Leave the name blank to use the selected filename or current directory name. Existing archives are preserved by choosing a unique filename.
+
+Pass a format or flags without `-i` to skip the menu.
 
 Press `w` to see tasks and 7-Zip progress. Select `Compress …` and press `x` to cancel.
 
@@ -67,7 +64,7 @@ Press `w` to see tasks and 7-Zip progress. Select `Compress …` and press `x` t
 
 | Argument | Effect |
 | --- | --- |
-| `-i` | Choose a format and options from a menu |
+| `-i` | Show the menu when passing other arguments |
 | `-p` | Require a password for ZIP, 7z or RAR |
 | `-h` | Encrypt headers and require a password for 7z or RAR |
 | `-l` | Choose a compression level |
