@@ -133,12 +133,63 @@ local function cleanup_temp_dir(temp_dir)
 	return true
 end
 
-local function run_command(command)
-	local output, err = command:stdout(Command.NULL):stderr(Command.PIPED):output()
-	if not output then
+local function create_temp_dir(root, filenames, output_dir)
+	local source, last_err = Url(root)
+	-- Staging inside a selected ancestor would add our own files to the archive.
+	for _, parent in ipairs({ output_dir, root, tostring(rt.preview.cache_dir) }) do
+		local base, inside = Url(parent), false
+		for _, filename in ipairs(filenames) do
+			if base:starts_with(source:join(filename)) then
+				inside = true
+				break
+			end
+		end
+		if not inside then
+			local dir, err = fs.unique("dir", base:join(".tmp_compress"))
+			if dir then
+				return tostring(dir)
+			elseif parent == output_dir then
+				return nil, err
+			end
+			last_err = err
+		end
+	end
+	return nil, last_err or "Temporary storage must be outside the selected files"
+end
+
+local function run_command(command, scope)
+	if scope and scope:cancelled() then
+		return nil, "Cancelled"
+	end
+	local child, err = command:stdout(Command.PIPED):stderr(Command.PIPED):spawn()
+	if not child then
 		return nil, tostring(err)
 	end
-	return output.status, output.stderr ~= "" and output.stderr or "exit code " .. tostring(output.status.code)
+	local diagnostic, closed = "", false
+	while true do
+		if scope and scope:cancelled() then
+			child:start_kill()
+			child:wait()
+			return nil, "Cancelled"
+		end
+		if not closed then
+			local line, event = child:read_line_with({ timeout = 100 })
+			if event == 0 or event == 1 then
+				diagnostic = (diagnostic .. line):sub(-8192)
+			elseif event == 2 then
+				closed = true
+			end
+		else
+			local status, wait_err = child:try_wait()
+			if status then
+				local reason = status.code and "exit code " .. status.code or "Process terminated without an exit code"
+				return status, diagnostic ~= "" and diagnostic or reason
+			elseif wait_err then
+				return nil, tostring(wait_err)
+			end
+			ya.sleep(0.1)
+		end
+	end
 end
 
 local function add_compression_level(target_args, level_arg, level_value)
@@ -454,104 +505,102 @@ return {
 			output_name = output_name:match("(.*%.tar)") or output_name
 		end
 
-		local temp_dir_name = ".tmp_compress"
-		local temp_dir = combine_url(output_dir, temp_dir_name)
-		temp_dir = tostring(fs.unique("dir", Url(temp_dir)))
-
-		local temp_dir_status, temp_dir_err = fs.create("dir_all", Url(temp_dir))
-		if not temp_dir_status then
-			notify(string.format("Failed to create temp directory, error code: %s", tostring(temp_dir_err)), "error")
+		local temp_dir, temp_err = create_temp_dir(archive_dir, filenames, output_dir)
+		if not temp_dir then
+			notify("Failed to create a temporary directory: " .. tostring(temp_err), "error")
 			return
 		end
 
 		local temp_output_url = combine_url(temp_dir, output_name)
 
-		local function fail(reason)
-			notify(reason, "error")
+		-- Custom tasks require Yazi 26.8. An entry already owns a plugin worker.
+		local cancel_scope
+		local supported, option = pcall(function()
+			local scope = rt.scope():child()
+			-- The task consumes the parent scope. This child observes its cancellation.
+			cancel_scope = scope:child()
+			return ya.task("custom", { pool = "none", progress = false, track = true, scope = scope })
+		end)
+		local task = supported and option:name("Compress " .. original_name):spawn() or nil
+		cancel_scope = task and cancel_scope or nil
+		if task and not task:acquire() then
 			cleanup_temp_dir(temp_dir)
-		end
-
-		local archive_status, archive_err =
-			run_command(Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(archive_dir))
-		if not archive_status or not archive_status.success then
-			fail(
-				string.format(
-					"Failed to create archive %s with '%s', error: %s",
-					ya.quote(output_name),
-					archive_cmd,
-					tostring(archive_err)
-				)
-			)
 			return
 		end
 
-		if archive_compress ~= "" then
-			local compress_status, compress_err
-
-			if archive_compress:match("^7z") or archive_compress == "lha" then
-				local compressed_output = combine_url(temp_dir, processed_name)
-				compress_status, compress_err = run_command(
-					Command(archive_compress):arg(archive_compress_args):arg(compressed_output):arg(temp_output_url)
-				)
-			elseif archive_compress == "lz4" then
-				compress_status, compress_err = run_command(
-					Command(archive_compress)
-						:arg(archive_compress_args)
-						:arg(temp_output_url)
-						:arg(combine_url(temp_dir, processed_name))
-				)
-			else
-				compress_status, compress_err =
-					run_command(Command(archive_compress):arg(archive_compress_args):arg(temp_output_url))
+		local function fail(reason)
+			if not cancel_scope or not cancel_scope:cancelled() then
+				if task then
+					task:fail(reason)
+				end
+				notify(reason, "error")
 			end
+			cleanup_temp_dir(temp_dir)
+		end
 
-			if not compress_status or not compress_status.success then
-				fail(
-					string.format(
-						"Failed to compress archive %s with '%s', error: %s",
-						ya.quote(output_name),
-						archive_compress,
-						tostring(compress_err)
-					)
-				)
+		local function run(command, phase)
+			if task then
+				task:log(phase)
+			end
+			local status, err = run_command(command, cancel_scope)
+			if status and status.success then
+				return true
+			end
+			fail(phase .. ": " .. tostring(err))
+			return false
+		end
+
+		if
+			not run(
+				Command(archive_cmd):arg(archive_args):arg(temp_output_url):arg(filenames):cwd(archive_dir),
+				"Create " .. ya.quote(output_name) .. " with " .. archive_cmd
+			)
+		then
+			return
+		end
+		if archive_compress ~= "" then
+			local command = Command(archive_compress):arg(archive_compress_args)
+			local compressed_output = combine_url(temp_dir, processed_name)
+			if archive_compress:match("^7z") or archive_compress == "lha" then
+				command:arg(compressed_output):arg(temp_output_url)
+			elseif archive_compress == "lz4" then
+				command:arg(temp_output_url):arg(compressed_output)
+			else
+				command:arg(temp_output_url)
+			end
+			if not run(command, "Compress " .. ya.quote(output_name) .. " with " .. archive_compress) then
 				return
 			end
 		end
 
+		if cancel_scope and cancel_scope:cancelled() then
+			cleanup_temp_dir(temp_dir)
+			return
+		end
 		local final_output_url = combine_url(output_dir, original_name)
 		local temp_url_processed = combine_url(temp_dir, processed_name)
-		final_output_url = tostring(fs.unique("file", Url(final_output_url)))
+		local unique_file, unique_file_err = fs.unique("file", Url(final_output_url))
+		if not unique_file then
+			fail("Failed to choose an archive filename: " .. tostring(unique_file_err))
+			return
+		end
+		final_output_url = tostring(unique_file)
 		local from, to = Url(temp_url_processed), Url(final_output_url)
 		local to_name = to.name
-		local move_status, move_err = fs.rename(from, to)
-		if not move_status then
-			if move_err and move_err.kind == "CrossesDevices" then
-				local copy_status, copy_err = fs.copy(from, to)
-				if not copy_status then
-					fail(
-						string.format(
-							"Failed to copy across devices %s to %s, error: %s",
-							ya.quote(from.name),
-							ya.quote(to.name),
-							copy_err and tostring(copy_err.kind) or "unknown"
-						)
-					)
-					return
-				end
-			else
-				fail(
-					string.format(
-						"Failed to move %s to %s, error: %s",
-						ya.quote(from.name),
-						ya.quote(to.name),
-						move_err and tostring(move_err.kind) or "unknown"
-					)
-				)
-				return
-			end
+		local moved, err = fs.rename(from, to)
+		if not moved and err and err.kind == "CrossesDevices" then
+			moved, err = fs.copy(from, to)
+		end
+		if not moved or (cancel_scope and cancel_scope:cancelled()) then
+			fs.remove("file", to)
+			fail("Failed to save archive " .. ya.quote(final_output_url) .. ": " .. tostring(err))
+			return
 		end
 
 		cleanup_temp_dir(temp_dir)
+		if task then
+			task:succeed({ to })
+		end
 
 		if not is_silent_success then
 			notify(string.format("Successfully created archive: %s", ya.quote(to_name)), "info")
