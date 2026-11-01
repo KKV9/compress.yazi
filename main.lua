@@ -553,6 +553,14 @@ return {
 				)
 				return
 			end
+			if config.cmd == "rar" then
+				for _, file in ipairs(filenames) do
+					if file:find("[*?]") then
+						notify("RAR cannot archive literal paths containing * or ?", "error")
+						return
+					end
+				end
+			end
 			if state.password then
 				local password = input_password()
 				if not password then
