@@ -58,7 +58,7 @@ Select files, or leave the selection empty to use the hovered file. Run the plug
 
 Pass a format or flags without `-i` to skip the menu.
 
-Press `w` to see progress. Select `Compress …` and press `x` to cancel. ZIP and BSD tar advance between entries. gzip, xz and bzip2 report completed stages.
+Press `w` to see compression progress. Select `Compress …` and press `x` to cancel. Progress may advance between files or stages.
 
 ## Flags
 
@@ -66,7 +66,7 @@ Press `w` to see progress. Select `Compress …` and press `x` to cancel. ZIP an
 | --- | --- |
 | `-i` | Show the menu when passing other arguments |
 | `-p` | Require a password for ZIP, 7z or RAR |
-| `-h` | Encrypt headers and require a password for 7z or RAR |
+| `-h` | Hide filenames and require a password for 7z or RAR |
 | `-l` | Choose a compression level |
 | `-s` | Hide the success notification |
 | `<extension>` | Set the default format, such as `7z` or `tar.gz` |

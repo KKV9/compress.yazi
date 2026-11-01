@@ -428,11 +428,10 @@ local function configure(state)
 	local function formats()
 		local available = {}
 		for _, choice in ipairs(format_choices) do
-			local config = find_archive_command("archive." .. choice[2], state)
-			if config then
+			if find_archive_command("archive." .. choice[2], state) then
 				available[#available + 1] = {
 					on = choice[1],
-					desc = choice[2] .. " (" .. config.cmd .. ")",
+					desc = choice[2],
 					extension = choice[2],
 				}
 			end
@@ -451,12 +450,12 @@ local function configure(state)
 
 	while true do
 		local config = find_archive_command("archive." .. state.extension, state)
-		local items = { { on = "f", desc = "Format: " .. state.extension .. " (" .. config.cmd .. ")" } }
+		local items = { { on = "f", desc = "Format: " .. state.extension } }
 		if config.passwordable or find_archive_command("archive." .. state.extension, { password = true }) then
 			items[#items + 1] = { on = "p", desc = "Password: " .. (state.password and "on" or "off") }
 		end
 		if config.header_arg then
-			items[#items + 1] = { on = "h", desc = "Headers: " .. (state.headers and "on" or "off") }
+			items[#items + 1] = { on = "h", desc = "Hide filenames: " .. (state.headers and "on" or "off") }
 		end
 		if config.level_arg then
 			items[#items + 1] = { on = "l", desc = "Level: " .. (state.level or "default") }
