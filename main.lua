@@ -62,8 +62,13 @@ local function is_command_available(cmd, bsdtar)
 	if command_cache[key] == nil then
 		if bsdtar then
 			local version = command_version(cmd)
-			command_cache[key] = version:find("bsdtar", 1, true) ~= nil
-				and (bsdtar == true or version:find(bsdtar, 1, true) ~= nil)
+			local available = version:find("bsdtar", 1, true) ~= nil
+			if available and bsdtar ~= true then
+				local sink = is_windows and "NUL" or "/dev/null"
+				local status = Command(cmd):arg({ bsdtar, "-cf", sink, "-T", sink }):status()
+				available = status and status.success or false
+			end
+			command_cache[key] = available
 		else
 			local status = Command(cmd):arg("--help"):status()
 			command_cache[key] = status ~= nil and status.code ~= nil
@@ -299,23 +304,21 @@ local archive_commands = {
 }
 
 local compressors = {
-	gz = { command = "gzip", level_max = 9, sevenzip = "gzip", bsdtar = "-z", option = "gzip", library = "zlib" },
-	xz = { command = "xz", level_max = 9, sevenzip = "xz", bsdtar = "-J", option = "xz", library = "liblzma" },
-	bz2 = { command = "bzip2", level_max = 9, sevenzip = "bzip2", bsdtar = "-j", option = "bzip2", library = "bz2lib" },
+	gz = { command = "gzip", level_max = 9, sevenzip = "gzip", bsdtar = "-z", option = "gzip" },
+	xz = { command = "xz", level_max = 9, sevenzip = "xz", bsdtar = "-J", option = "xz" },
+	bz2 = { command = "bzip2", level_max = 9, sevenzip = "bzip2", bsdtar = "-j", option = "bzip2" },
 	zst = {
 		command = "zstd",
 		args = { "--ultra" },
 		level_max = 22,
 		bsdtar = "--zstd",
 		option = "zstd",
-		library = "libzstd",
 	},
 	lz4 = {
 		command = "lz4",
 		level_max = 12,
 		bsdtar = "--lz4",
 		option = "lz4",
-		library = "liblz4",
 		bsdtar_level_max = 9,
 	},
 	lha = {
@@ -354,7 +357,7 @@ for ext, compressor in pairs(compressors) do
 	if compressor.bsdtar then
 		candidates[#candidates + 1] = {
 			command = { "bsdtar", "tar" },
-			bsdtar = compressor.library,
+			bsdtar = compressor.bsdtar,
 			args = { compressor.bsdtar, "-cf" },
 			level_arg = { "--options", compressor.option .. ":compression-level=" },
 			level_min = 1,
