@@ -1,161 +1,87 @@
-<h1 align="center">🗜️ compress.yazi</h1>
-<p align="center">
-  <b>A blazing fast, flexible archive plugin for <a href="https://github.com/sxyazi/yazi">Yazi</a></b><br>
-  <i>Effortlessly compress your files and folders with style!</i>
-</p>
+# compress.yazi
 
-## 📖 Table of Contents
+Create archives from selected or hovered files in [Yazi](https://github.com/sxyazi/yazi).
 
-- [Features](#-features)
-- [Supported File Types](#-supported-file-types)
-- [Installation](#%EF%B8%8F-installation)
-- [Keymap Example](#-keymap-example)
-- [Usage](#%EF%B8%8F-usage)
-- [Flags](#%EF%B8%8F-flags)
-- [Tips](#-tips)
-- [Credits](#-credits)
+## Installation
 
-## 🚀 Features
+Requires Yazi 26.5.6 or newer and archive tools in your `PATH`.
 
-- 🗂️ **Multi-format support:** zip, 7z, rar, tar, tar.gz, tar.xz, tar.bz2, tar.zst, tar.lz4, tar.lha
-- 🌍 **Cross-platform:** Works on Unix & Windows
-- 🔒 **Password protection:** Secure your archives (zip/7z/rar)
-- 🛡️ **Header encryption:** Hide file lists (7z/rar)
-- ⚡ **Compression level:** Choose your balance of speed vs. size
-- 🛑 **Overwrite safety:** Never lose files by accident
-- 🎯 **Seamless Yazi integration:** Fast, native-like UX
-
-## 📦 Supported File Types
-
-| Extension | Default Command | 7-Zip Command | BSD tar Command |
-| --- | --- | --- | --- |
-| `.zip`, `.cbz` | `zip -r` | `7z a -tzip` | `tar --format=zip -cf` |
-| `.7z`, `.cb7` | `7z a -t7z` | `7z a -t7z` | |
-| `.rar`, `.cbr` | `rar a` | | |
-| `.tar` | `tar -cf` | | `tar -cf` |
-| `.tar.gz`, `.tgz` | `tar -cf + gzip` | `tar -cf + 7z a -tgzip` | `tar -czf` |
-| `.tar.xz`, `.txz` | `tar -cf + xz` | `tar -cf + 7z a -txz` | `tar -cJf` |
-| `.tar.bz2`, `.tbz`, `.tbz2` | `tar -cf + bzip2` | `tar -cf + 7z a -tbzip2` | `tar -cjf` |
-| `.tar.zst`, `.tzst` | `tar -cf + zstd` | | `tar --zstd -cf` |
-| `.tar.lz4`, `.tlz4` | `tar -cf + lz4` | | `tar --lz4 -cf` |
-| `.tar.lha` | `tar -cf + lha` | | |
-
-
-## ⚡️ Installation
-
-```bash
-# Unix
-git clone https://github.com/KKV9/compress.yazi.git ~/.config/yazi/plugins/compress.yazi
-
-# Windows (CMD, not PowerShell!)
-git clone https://github.com/KKV9/compress.yazi.git %AppData%\yazi\config\plugins\compress.yazi
-
-# Or with yazi plugin manager
-ya pkg add KKV9/compress
+```sh
+ya pkg add greyxp1/compress
 ```
-### 🔧 Extras (Windows)
 
-To enable additional compression formats and features on Windows, follow these steps:
+Or clone into your plugin directory:
 
-1. **Install [7-Zip](https://www.7-zip.org/):**  
-   Add `C:\Program Files\7-Zip` to your `PATH`.  
-   This enables support for `.7z` archives and password-protected `.zip` files.
+```sh
+git clone https://github.com/greyxp1/compress.yazi.git ~/.config/yazi/plugins/compress.yazi
+```
 
-2. **Alternative: Install [Nanazip](https://github.com/M2Team/NanaZip):**  
-   A modern alternative to 7-Zip with similar functionality and extra features.
+On Windows, using CMD:
 
-3. **Install [WinRAR](https://www.win-rar.com/download.html):**  
-   Add `C:\Program Files\WinRAR` to your `PATH`.  
-   This enables support for `.rar` archives.
+```cmd
+git clone https://github.com/greyxp1/compress.yazi.git "%AppData%\yazi\config\plugins\compress.yazi"
+```
 
-4. **Install Additional Tools:**  
-   To use formats like `lha`, `lz4`, `gzip`, etc., install their respective tools and ensure they are added to your `PATH`.
+On Windows, add the installed archive tools to your `PATH`, such as `C:\Program Files\7-Zip` and `C:\Program Files\WinRAR`.
 
-## 🎹 Keymap Example
+## Supported formats
 
-Add this to your `keymap.toml`:
+| Formats | Tools |
+| --- | --- |
+| `.zip`, `.cbz` | `zip`, 7-Zip or BSD tar |
+| `.7z`, `.cb7` | 7-Zip |
+| `.rar`, `.cbr` | `rar` |
+| `.tar` | TAR |
+| `.tar.gz`, `.tgz` | TAR with `gzip` or 7-Zip, or BSD tar |
+| `.tar.xz`, `.txz` | TAR with `xz` or 7-Zip, or BSD tar |
+| `.tar.bz2`, `.tbz`, `.tbz2` | TAR with `bzip2` or 7-Zip, or BSD tar |
+| `.tar.zst`, `.tzst` | TAR with `zstd`, or BSD tar |
+| `.tar.lz4`, `.tlz4` | TAR with `lz4`, or BSD tar |
+| `.tar.lha` | TAR with `lha` |
 
+7-Zip is detected as `7zz`, `7z` or `7za`, in that order. BSD tar compression depends on its built-in codecs.
+
+Password-protected ZIP/CBZ archives use AES-256 and require 7-Zip and an AES-compatible reader.
+
+## Usage
+
+Add bindings to `keymap.toml`:
 
 ```toml
 [[mgr.prepend_keymap]]
-on   = [ "c", "a", "a" ]
-run  = "plugin compress"
-desc = "Archive selected files"
+on = [ "c", "a" ]
+run = "plugin compress"
+desc = "Create archive"
 
 [[mgr.prepend_keymap]]
-on   = [ "c", "a", "i" ]
-run  = "plugin compress -i"
+on = [ "c", "i" ]
+run = "plugin compress -i"
 desc = "Configure archive options"
-
-[[mgr.prepend_keymap]]
-on   = [ "c", "a", "p" ]
-run  = "plugin compress -p"
-desc = "Archive selected files (password)"
-
-[[mgr.prepend_keymap]]
-on   = [ "c", "a", "h" ]
-run  = "plugin compress '-ph 7z'"
-desc = "Archive selected files (password+header)"
-
-[[mgr.prepend_keymap]]
-on   = [ "c", "a", "l" ]
-run  = "plugin compress -l"
-desc = "Archive selected files (compression level)"
-
-[[mgr.prepend_keymap]]
-on   = [ "c", "a", "u" ]
-run  = "plugin compress '-phl 7z'"
-desc = "Archive selected files (password+header+level)"
 ```
 
-## 🛠️ Usage
+Select files, or leave the selection empty to use the hovered file. Run the plugin and enter an archive name. Leave the name blank to use the selected filename or current directory name. Existing archives are preserved by choosing a unique filename.
 
-1. **Select files/folders** in Yazi.
-2. Press <kbd>c</kbd> <kbd>a</kbd> to open the archive dialog.
-3. Choose:
-   - <kbd>a</kbd> for a standard archive
-   - <kbd>i</kbd> to configure archive options
-   - <kbd>p</kbd> for password protection (zip/7z/rar)
-   - <kbd>h</kbd> to encrypt header (7z/rar)
-   - <kbd>l</kbd> to set compression level (all compression algorithims)
-   - <kbd>u</kbd> for all options together
-4. **Type a name** for your archive (or leave blank for suggested name).
-5. **Enter and confirm your password** and/or **compression level** if prompted.
-6. **Overwrite protect** if a file already exists, the new file will be given a suffix _#.
-7. Enjoy your shiny new archive!
+On Yazi 26.8+, press `w`, select `Compress …` and press `x` to cancel.
 
-## 🏳️‍🌈 Flags
+## Flags
 
-- Combine flags for more power!
-- when separating flags with spaces, make sure to single quote them (eg., `'-ph rar'`)
-- `-i` Choose a format and options from a menu
-- `-p` Password protect (zip/7z/rar)
-- `-h` Encrypt header and require a password (7z/rar)
-- `-l` Set compression level (all compression algorithims)
-- `-s` Silence success message
-- `<extention>` Specify a default extention (eg., `7z`, `tar.gz`)
+| Argument | Effect |
+| --- | --- |
+| `-i` | Choose a format and options from a menu |
+| `-p` | Require a password for ZIP, 7z or RAR |
+| `-h` | Encrypt headers and require a password for 7z or RAR |
+| `-l` | Choose a compression level |
+| `-s` | Hide the success notification |
+| `<extension>` | Set the default format, such as `7z` or `tar.gz` |
 
-#### Combining multiple flags:
+The default format is ZIP. Names without an extension use the default format. Passwords must be entered twice.
+
+Combine flags and quote arguments containing spaces:
+
 ```toml
-[[mgr.prepend_keymap]]
-on   = [ "c", "a", "7" ]
-run  = "plugin compress '-ph 7z'"
-desc = "Archive selected files to 7z (password+header)"
-[[mgr.prepend_keymap]]
-on   = [ "c", "a", "r" ]
-run  = "plugin compress '-p -l rar'"
-desc = "Archive selected files to rar (password+level)"
+run = "plugin compress '-phl 7z'"
 ```
-## 💡 Tips
 
-- The file extension **must** match a supported type.
-- The required compression tool **must** be installed and in your `PATH` (7zip/rar etc.).
-- Password-protected ZIP/CBZ archives use AES-256 and require 7-Zip and an AES-compatible reader.
-- On Yazi 26.8+, press `w`, select `Compress …` and press `x` to cancel.
-- If no extention is provided, the default extention (zip) will be appended automatically.
-- If you leave the filename blank, the plugin will use the selected filename or parent directory, when multiple files are selected, to name the archive.
+## Credits
 
-## 📣 Credits
-
-Made with ❤️ for [Yazi](https://github.com/sxyazi/yazi) by [KKV9](https://github.com/KKV9).
-Contributions are welcome! Feel free to submit a pull request.
+Based on [KKV9/compress.yazi](https://github.com/KKV9/compress.yazi). See the [commit history](https://github.com/greyxp1/compress.yazi/commits/main) for contributors.
