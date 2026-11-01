@@ -1,4 +1,5 @@
---- @since 26.5.6
+--- @since 26.9.1
+--- @sync entry
 
 local is_windows = ya.target_family() == "windows"
 
@@ -108,16 +109,6 @@ local selected_or_hovered = ya.sync(function()
 	return tostring(root), filenames, name, tostring(tab.current.cwd)
 end)
 
-local function cleanup_temp_dir(temp_dir)
-	local status, err = fs.remove("dir_all", Url(temp_dir))
-	if not status then
-		notify(
-			string.format("Failed to clean up temporary directory %s, error: %s", ya.quote(temp_dir), tostring(err)),
-			"error"
-		)
-	end
-end
-
 local function create_temp_dir(root, filenames, output_dir)
 	local source, last_err = Url(root)
 	-- Staging inside a selected ancestor would add our own files to the archive.
@@ -140,41 +131,6 @@ local function create_temp_dir(root, filenames, output_dir)
 		end
 	end
 	return nil, last_err or "Temporary storage must be outside the selected files"
-end
-
-local function run_command(command, scope)
-	if scope and scope:cancelled() then
-		return nil, "Cancelled"
-	end
-	local child, err = command:stdout(Command.PIPED):stderr(Command.PIPED):spawn()
-	if not child then
-		return nil, tostring(err)
-	end
-	local diagnostic, closed = "", false
-	while true do
-		if scope and scope:cancelled() then
-			child:start_kill()
-			child:wait()
-			return nil, "Cancelled"
-		end
-		if not closed then
-			local line, event = child:read_line_with({ timeout = 100 })
-			if event == 0 or event == 1 then
-				diagnostic = (diagnostic .. line):sub(-8192)
-			elseif event == 2 then
-				closed = true
-			end
-		else
-			local status, wait_err = child:try_wait()
-			if status then
-				local reason = status.code and "exit code " .. status.code or "Process terminated without an exit code"
-				return status, diagnostic ~= "" and diagnostic or reason
-			elseif wait_err then
-				return nil, tostring(wait_err)
-			end
-			ya.sleep(0.1)
-		end
-	end
 end
 
 local function add_compression_level(target_args, level_arg, level_value)
@@ -300,7 +256,8 @@ for ext, compressor in pairs(compressors) do
 		},
 	}
 	if compressor.sevenzip then
-		candidates[#candidates + 1] = {
+		-- 7-Zip parallelizes bzip2 at a higher memory cost.
+		table.insert(candidates, ext == "bz2" and 1 or #candidates + 1, {
 			command = tar_commands,
 			args = { "-cf" },
 			compress = sevenzip_commands,
@@ -308,7 +265,7 @@ for ext, compressor in pairs(compressors) do
 			level_arg = "-mx=",
 			level_min = 1,
 			level_max = 9,
-		}
+		})
 	end
 	if compressor.bsdtar then
 		candidates[#candidates + 1] = {
@@ -451,187 +408,289 @@ local option_flags = { p = "password", h = "headers", l = "ask_level", s = "sile
 
 return {
 	entry = function(_, job)
-		command_cache = {}
-		local state = { extension = "zip" }
-		for _, arg in ipairs(job.args or {}) do
-			if arg:match("^%-%w+$") then
-				for flag in arg:sub(2):gmatch(".") do
-					local option = option_flags[flag]
-					if option then
-						state[option] = true
-					else
-						notify("Unknown flag: -" .. flag, "warn")
+		ya.async(function()
+			command_cache = {}
+			local state = { extension = "zip" }
+			for _, arg in ipairs(job.args or {}) do
+				if arg:match("^%-%w+$") then
+					for flag in arg:sub(2):gmatch(".") do
+						local option = option_flags[flag]
+						if option then
+							state[option] = true
+						else
+							notify("Unknown flag: -" .. flag, "warn")
+						end
+					end
+				elseif archive_commands[archive_aliases[arg] or arg] then
+					state.extension = arg
+				else
+					notify(
+						(arg:match("^[%w%.]+$") and "Unsupported extension: " or "Unknown argument: ") .. arg,
+						"warn"
+					)
+				end
+			end
+			state.password = state.password or state.headers
+			ya.emit("escape", { visual = true })
+
+			local root, filenames, default_name, output_dir = selected_or_hovered()
+			if not root then
+				notify("Select files with a shared parent directory", "error")
+				return
+			elseif state.interactive and not configure(state) then
+				return
+			end
+
+			local default_filename = default_name .. "." .. state.extension
+			local name, event = ya.input({
+				title = "Create archive:",
+				value = state.interactive and default_filename or "",
+				pos = { "top-center", y = 3, w = 40 },
+			})
+			if event ~= 1 then
+				return
+			elseif name == "" then
+				name = default_filename
+			elseif not name:match("%.%w+$") then
+				name = name .. "." .. state.extension
+			end
+			if not is_valid_filename(name) then
+				notify("Invalid archive filename", "error")
+				return
+			end
+
+			local config = find_archive_command(name, state)
+			if not config then
+				notify(
+					config == false and "Unsupported file extension"
+						or "Could not find a suitable archive program for the selected format and options",
+					"error"
+				)
+				return
+			end
+			if state.password then
+				local password = input_password()
+				if not password then
+					return
+				end
+				config.args[#config.args + 1] = (state.headers and config.cmd == "rar" and "-hp" or "-p") .. password
+			end
+			if state.headers and config.cmd ~= "rar" then
+				config.args[#config.args + 1] = config.header_arg
+			end
+			if config.level_arg then
+				if state.ask_level then
+					local accepted
+					state.level, accepted = input_level(config, state.level)
+					if not accepted then
+						return
 					end
 				end
-			elseif archive_commands[archive_aliases[arg] or arg] then
-				state.extension = arg
-			else
-				notify((arg:match("^[%w%.]+$") and "Unsupported extension: " or "Unknown argument: ") .. arg, "warn")
-			end
-		end
-		state.password = state.password or state.headers
-		ya.emit("escape", { visual = true })
-
-		local root, filenames, default_name, output_dir = selected_or_hovered()
-		if not root then
-			notify("Select files with a shared parent directory", "error")
-			return
-		elseif state.interactive and not configure(state) then
-			return
-		end
-
-		local default_filename = default_name .. "." .. state.extension
-		local name, event = ya.input({
-			title = "Create archive:",
-			value = state.interactive and default_filename or "",
-			pos = { "top-center", y = 3, w = 40 },
-		})
-		if event ~= 1 then
-			return
-		elseif name == "" then
-			name = default_filename
-		elseif not name:match("%.%w+$") then
-			name = name .. "." .. state.extension
-		end
-		if not is_valid_filename(name) then
-			notify("Invalid archive filename", "error")
-			return
-		end
-
-		local config = find_archive_command(name, state)
-		if not config then
-			notify(
-				config == false and "Unsupported file extension"
-					or "Could not find a suitable archive program for the selected format and options",
-				"error"
-			)
-			return
-		end
-		if state.password then
-			local password = input_password()
-			if not password then
-				return
-			end
-			config.args[#config.args + 1] = (state.headers and config.cmd == "rar" and "-hp" or "-p") .. password
-		end
-		if state.headers and config.cmd ~= "rar" then
-			config.args[#config.args + 1] = config.header_arg
-		end
-		if config.level_arg then
-			if state.ask_level then
-				local accepted
-				state.level, accepted = input_level(config, state.level)
-				if not accepted then
-					return
+				if state.level then
+					if state.level < config.level_min or state.level > config.level_max then
+						notify("The selected compression level is unsupported by this archive format", "error")
+						return
+					end
+					add_compression_level(
+						config.compress and config.compress_args or config.args,
+						config.level_arg,
+						tostring(state.level)
+					)
 				end
 			end
-			if state.level then
-				if state.level < config.level_min or state.level > config.level_max then
-					notify("The selected compression level is unsupported by this archive format", "error")
-					return
-				end
-				add_compression_level(
-					config.compress and config.compress_args or config.args,
-					config.level_arg,
-					tostring(state.level)
-				)
-			end
-		end
 
-		-- Backends infer their format from the temporary filename, including comic archives.
-		local filename = canonical_archive_name(name)
-		local intermediate = config.compress and filename:match("(.*%.tar)") or filename
-		local temp_dir, err = create_temp_dir(root, filenames, output_dir)
-		if not temp_dir then
-			notify("Failed to create a temporary directory: " .. tostring(err), "error")
-			return
-		end
-		local temp_output = tostring(Url(temp_dir):join(intermediate))
-
-		-- Custom tasks require Yazi 26.8. An entry already owns a plugin worker.
-		local cancel_scope
-		local supported, option = pcall(function()
+			-- Backends infer their format from the temporary filename, including comic archives.
+			local filename = canonical_archive_name(name)
+			local intermediate = config.compress and filename:match("(.*%.tar)") or filename
+			local progress = (config.cmd:match("^7z") or (config.compress or ""):match("^7z")) ~= nil
 			local scope = rt.scope():child()
-			-- The task consumes the parent scope. This child observes its cancellation.
-			cancel_scope = scope:child()
-			return ya.task("custom", { pool = "none", progress = false, track = true, scope = scope })
-		end)
-		local task = supported and option:name("Compress " .. name):spawn() or nil
-		cancel_scope = task and cancel_scope or nil
-		if task and not task:acquire() then
-			cleanup_temp_dir(temp_dir)
-			return
-		end
-
-		local function fail(reason)
-			if not cancel_scope or not cancel_scope:cancelled() then
-				if task then
-					task:fail(reason)
+			local cancel_scope = scope:child()
+			local task = ya.task("custom", {
+				pool = "plugin",
+				progress = progress,
+				track = true,
+				scope = scope,
+			})
+				:name("Compress " .. name)
+				:spawn()
+			task:progress({ total = 1, workload = progress and 100 or 0 })
+			local native = task.cancel ~= nil
+			local function select(work)
+				if native then
+					return ya.select(task, work)
+				elseif cancel_scope:cancelled() then
+					return 1
 				end
-				notify(reason, "error")
+
+				-- Stable 26.9.1 has a placeholder ya.select and no callable tasks.
+				local tx, rx = ya.chan("mpsc", 1)
+				local ok, result
+				local worker = ya.async(function()
+					ok, result = pcall(work)
+					tx:send(2)
+				end)
+				local watcher = ya.async(function()
+					while not cancel_scope:cancelled() do
+						ya.sleep(0.1)
+					end
+					tx:send(1)
+				end)
+				local branch = rx:recv()
+				if branch == 1 then
+					worker:abort()
+					-- Abort completes on the next poll, releasing the child's I/O borrow.
+					ya.sleep(0)
+				end
+				watcher:abort()
+				if branch == 2 and not ok then
+					error(result, 0)
+				end
+				return branch
 			end
-			cleanup_temp_dir(temp_dir)
-		end
-		local function run(command, phase)
-			if task then
+
+			local child, temp_dir, destination
+			local function run(command, phase, sevenzip)
 				task:log(phase)
-			end
-			local status, run_err = run_command(command, cancel_scope)
-			if status and status.success then
-				return true
-			end
-			fail(phase .. ": " .. tostring(run_err))
-		end
+				if sevenzip then
+					command:arg({ "-bso0", "-bsp1", "-sccUTF-8" })
+				end
+				local err
+				child, err = command:stdout(Command.PIPED):stderr(Command.PIPED):spawn()
+				if not child then
+					error(phase .. ": " .. tostring(err), 0)
+				end
 
-		if
-			not run(
-				Command(config.cmd):arg(config.args):arg(temp_output):arg(filenames):cwd(root),
-				"Create " .. ya.quote(name) .. " with " .. config.cmd
-			)
-		then
-			return
-		end
-		if config.compress then
-			local command = Command(config.compress):arg(config.compress_args)
-			local target = tostring(Url(temp_dir):join(filename))
-			if config.compress:match("^7z") or config.compress == "lha" then
-				command:arg(target):arg(temp_output)
-			elseif config.compress == "lz4" then
-				command:arg(temp_output):arg(target)
-			else
-				command:arg(temp_output)
-			end
-			if not run(command, "Compress " .. ya.quote(name) .. " with " .. config.compress) then
-				return
-			end
-		end
-		if cancel_scope and cancel_scope:cancelled() then
-			cleanup_temp_dir(temp_dir)
-			return
-		end
+				local diagnostic, tail, last = "", "", 0
+				while true do
+					local chunk, event, read_err = child:read(4096)
+					if not chunk then
+						error(phase .. ": " .. tostring(read_err), 0)
+					elseif event == 2 then
+						break
+					end
+					if type(chunk) == "table" then
+						chunk = string.char(table.unpack(chunk))
+					end
+					diagnostic = (diagnostic .. chunk):sub(-8192)
+					if sevenzip and event == 0 then
+						local text, percent = tail .. chunk, last
+						for line in text:gmatch("[^\r\n\b]+") do
+							percent = tonumber(line:match("^%s*(%d+)%%")) or percent
+						end
+						percent = math.min(100, percent)
+						tail = text:match("[^\r\n\b]*$"):sub(-4096)
+						if percent > last then
+							task:progress({ processed = percent - last })
+							last = percent
+						end
+					end
+				end
 
-		local to, reserve_err = fs.unique("file", Url(output_dir):join(name))
-		if not to then
-			fail("Failed to choose an archive filename: " .. tostring(reserve_err))
-			return
-		end
-		local to_name = to.name
-		local from = Url(temp_dir):join(filename)
-		local moved, move_err = fs.rename(from, to)
-		if not moved and move_err and move_err.kind == "CrossesDevices" then
-			moved, move_err = fs.copy(from, to)
-		end
-		if not moved or (cancel_scope and cancel_scope:cancelled()) then
-			fs.remove("file", to)
-			fail("Failed to save archive " .. ya.quote(tostring(to)) .. ": " .. tostring(move_err))
-			return
-		end
-		cleanup_temp_dir(temp_dir)
-		if task then
-			task:succeed({ to })
-		end
-		if not state.silent then
-			notify("Successfully created archive: " .. ya.quote(to_name), "info")
-		end
+				local status, wait_err = child:wait()
+				if not status or not status.success then
+					local reason = status and (status.code and "exit code " .. status.code or "Process terminated")
+						or tostring(wait_err)
+					error(phase .. ": " .. (diagnostic ~= "" and diagnostic or reason), 0)
+				end
+				child = nil
+				if sevenzip then
+					task:progress({ processed = 100 - last })
+				end
+			end
+
+			local ok, result = pcall(function()
+				if not task:acquire() then
+					return
+				end
+
+				-- Reserve paths outside cancellable branches so cleanup always owns them.
+				local err
+				temp_dir, err = create_temp_dir(root, filenames, output_dir)
+				if not temp_dir then
+					error("Failed to create a temporary directory: " .. tostring(err), 0)
+				end
+				local temp_output = tostring(Url(temp_dir):join(intermediate))
+				local branch = select(function()
+					run(
+						Command(config.cmd):arg(config.args):arg(temp_output):arg(filenames):cwd(root),
+						"Create " .. ya.quote(name) .. " with " .. config.cmd,
+						config.cmd:match("^7z")
+					)
+					if config.compress then
+						local command = Command(config.compress):arg(config.compress_args)
+						local target = tostring(Url(temp_dir):join(filename))
+						if config.compress:match("^7z") or config.compress == "lha" then
+							command:arg(target):arg(temp_output)
+						elseif config.compress == "lz4" then
+							command:arg(temp_output):arg(target)
+						else
+							command:arg(temp_output)
+						end
+						run(
+							command,
+							"Compress " .. ya.quote(name) .. " with " .. config.compress,
+							config.compress:match("^7z")
+						)
+					end
+				end)
+				if branch == 1 then
+					return
+				end
+
+				destination, err = fs.unique("file", Url(output_dir):join(name))
+				if not destination then
+					error("Failed to choose an archive filename: " .. tostring(err), 0)
+				end
+				-- Filesystem operations can outlive a cancelled Lua future.
+				local from = Url(temp_dir):join(filename)
+				local moved, move_err = fs.rename(from, destination)
+				if not moved and move_err and move_err.kind == "CrossesDevices" then
+					moved, move_err = fs.copy(from, destination)
+				end
+				if not moved then
+					error("Failed to save archive " .. ya.quote(tostring(destination)) .. ": " .. tostring(move_err), 0)
+				elseif cancel_scope:cancelled() then
+					return
+				end
+				local saved = destination
+				destination = nil
+				return saved
+			end)
+
+			if child then
+				child:start_kill()
+				local stopped, err = child:wait()
+				if not stopped then
+					ok, result = false, "Failed to stop archive program: " .. tostring(err)
+				end
+			end
+			if destination then
+				local removed, err = fs.remove("file", destination)
+				if not removed then
+					ok, result = false, "Failed to remove incomplete archive: " .. tostring(err)
+				end
+			end
+			if temp_dir then
+				local removed, err = fs.remove("dir_all", Url(temp_dir))
+				if not removed then
+					ok, result = false, "Failed to clean up temporary directory: " .. tostring(err)
+				end
+			end
+
+			if not ok then
+				task:progress({ failed = 1 })
+				task:fail(tostring(result))
+				notify(tostring(result), "error")
+			elseif result then
+				local to_name = result.name
+				task:progress(native and { succeeded = 1 } or { success = 1 })
+				task:succeed({ result })
+				if not state.silent then
+					notify("Successfully created archive: " .. ya.quote(to_name), "info")
+				end
+			elseif native then
+				task:cancel()
+			end
+		end)
 	end,
 }

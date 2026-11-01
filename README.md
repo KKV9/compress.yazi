@@ -4,7 +4,7 @@ Create archives from selected or hovered files in [Yazi](https://github.com/sxya
 
 ## Installation
 
-Requires Yazi 26.5.6 or newer and archive tools in your `PATH`.
+Requires Yazi 26.9.1 or newer and archive tools in your `PATH`.
 
 ```sh
 ya pkg add greyxp1/compress
@@ -61,7 +61,7 @@ desc = "Configure archive options"
 
 Select files, or leave the selection empty to use the hovered file. Run the plugin and enter an archive name. Leave the name blank to use the selected filename or current directory name. Existing archives are preserved by choosing a unique filename.
 
-On Yazi 26.8+, press `w`, select `Compress …` and press `x` to cancel.
+Press `w` to see tasks and 7-Zip progress. Select `Compress …` and press `x` to cancel.
 
 ## Flags
 
