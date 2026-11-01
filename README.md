@@ -58,7 +58,7 @@ Select files, or leave the selection empty to use the hovered file. Run the plug
 
 Pass a format or flags without `-i` to skip the menu.
 
-Press `w` to see tasks and 7-Zip progress. Select `Compress …` and press `x` to cancel.
+Press `w` to see progress. Select `Compress …` and press `x` to cancel. ZIP and BSD tar advance between entries. gzip, xz and bzip2 report completed stages.
 
 ## Flags
 

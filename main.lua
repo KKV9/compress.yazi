@@ -48,16 +48,20 @@ local function notify(message, level)
 end
 
 local command_cache = {}
+local function command_version(cmd)
+	local key = cmd .. ":version"
+	if command_cache[key] == nil then
+		local output = Command(cmd):arg("--version"):output()
+		command_cache[key] = output and output.status.success and output.stdout or ""
+	end
+	return command_cache[key]
+end
+
 local function is_command_available(cmd, bsdtar)
 	local key = cmd .. (bsdtar and ":bsdtar:" .. tostring(bsdtar) or "")
 	if command_cache[key] == nil then
 		if bsdtar then
-			local version_key = cmd .. ":version"
-			if command_cache[version_key] == nil then
-				local output = Command(cmd):arg("--version"):output()
-				command_cache[version_key] = output and output.status.success and output.stdout or ""
-			end
-			local version = command_cache[version_key]
+			local version = command_version(cmd)
 			command_cache[key] = version:find("bsdtar", 1, true) ~= nil
 				and (bsdtar == true or version:find(bsdtar, 1, true) ~= nil)
 		else
@@ -131,6 +135,80 @@ local function create_temp_dir(root, filenames, output_dir)
 		end
 	end
 	return nil, last_err or "Temporary storage must be outside the selected files"
+end
+
+local function input_stats(root, filenames, sized)
+	local pending, stats = {}, { entries = 0, tar = 0 }
+	for _, name in ipairs(filenames) do
+		local url = Url(root):join(name)
+		pending[#pending + 1] = { url = url, cha = fs.cha(url, false) }
+	end
+	while #pending > 0 do
+		local file = table.remove(pending)
+		local stat = file.cha
+		if sized and stat and stat.is_dummy and not stat.is_dir and not stat.is_link then
+			stat = fs.cha(file.url, false)
+		end
+		stats.entries = stats.entries + 1
+		if sized then
+			local size = stat and not stat.is_dir and not stat.is_link and stat.len or 0
+			stats.tar = stats.tar + 512 + math.ceil(size / 512) * 512
+		end
+		if stat and stat.is_dir and not stat.is_link then
+			for _, child in ipairs(fs.read_dir(file.url, { resolve = false }) or {}) do
+				pending[#pending + 1] = child
+			end
+		end
+	end
+	if sized then
+		stats.tar = math.ceil((stats.tar + 1024) / 10240) * 10240
+	end
+	return stats
+end
+
+local function reported_progress(kind, state, chunk, event, stats)
+	local text, amount = state.tails[event + 1] .. chunk
+	if kind == "zip" and event == 0 then
+		for line in text:gmatch("[^\r\n]+") do
+			local done, remaining = line:match("^%s*(%d+)/%s*(%d+)%s+adding:")
+			if done then
+				amount = tonumber(done) / (tonumber(done) + tonumber(remaining))
+			end
+		end
+	elseif kind == "tar" and event == 1 then
+		for value in text:gmatch("YAZI_PROGRESS:(%d+)") do
+			amount = stats.tar > 0 and tonumber(value) / stats.tar
+		end
+	elseif kind == "entries" then
+		for line in text:gmatch("([^\n]*)\n") do
+			if event == 1 and line:match("^a ") then
+				state.entries = state.entries + 1
+			end
+		end
+		amount = stats.entries > 0 and math.max(0, state.entries - 1) / stats.entries
+	elseif kind == "lha" and event == 0 then
+		local dots = text:match("%- Freezing :%s+(%.+)[\r\n]")
+		if dots then
+			state.dots = #dots
+		end
+		local done = text:match("%- Freezing :%s+(o+)")
+		amount = done and state.dots > 0 and #done / state.dots
+	elseif kind == "bytes" and event == 1 then
+		for value, unit in text:gmatch("Read%s*:%s*([%d%.]+)%s*(%a*)") do
+			local powers = { B = 0, K = 1, M = 2, G = 3, T = 4 }
+			local power = powers[unit:sub(1, 1)]
+			if tonumber(value) and power then
+				amount = stats.bytes > 0 and tonumber(value) * 1024 ^ power / stats.bytes
+			end
+		end
+	elseif kind == "percent" and event == 0 then
+		for line in text:gmatch("[^\r\n\b]+") do
+			local percent = line:match("^%s*(%d+)%%")
+			amount = percent and tonumber(percent) / 100 or amount
+		end
+	end
+	state.tails[event + 1] = text:match("[^\r\n\b]*$"):sub(-4096)
+	return amount and math.min(99, math.floor(amount * 100)) or state.last
 end
 
 local function add_compression_level(target_args, level_arg, level_value)
@@ -503,18 +581,18 @@ return {
 			-- Backends infer their format from the temporary filename, including comic archives.
 			local filename = canonical_archive_name(name)
 			local intermediate = config.compress and filename:match("(.*%.tar)") or filename
-			local progress = (config.cmd:match("^7z") or (config.compress or ""):match("^7z")) ~= nil
+			local stages = config.compress and 2 or 1
 			local scope = rt.scope():child()
 			local cancel_scope = scope:child()
 			local task = ya.task("custom", {
 				pool = "plugin",
-				progress = progress,
+				progress = true,
 				track = true,
 				scope = scope,
 			})
 				:name("Compress " .. name)
 				:spawn()
-			task:progress({ total = 1, workload = progress and 100 or 0 })
+			task:progress({ total = stages, workload = stages * 100 })
 			local native = task.cancel ~= nil
 			local function select(work)
 				if native then
@@ -550,18 +628,42 @@ return {
 			end
 
 			local child, temp_dir, destination
-			local function run(command, phase, sevenzip)
+			local function run(program, args, files, phase, stats)
 				task:log(phase)
-				if sevenzip then
+				local command, kind = Command(program)
+				if program:match("^7z") then
+					kind = "percent"
 					command:arg({ "-bso0", "-bsp1", "-sccUTF-8" })
+				elseif program == "rar" then
+					kind = "percent"
+				elseif program == "zip" then
+					kind = "zip"
+					command:arg({ "-dc", "-ds", "0" })
+				elseif program == "tar" or program == "bsdtar" then
+					if command_version(program):find("GNU tar", 1, true) then
+						kind = "tar"
+						command:arg({ "--checkpoint=64", "--checkpoint-action=echo=YAZI_PROGRESS:%{write}T" })
+					else
+						kind = "entries"
+						command:arg("-v")
+					end
+				elseif program == "zstd" then
+					kind = "bytes"
+					command:arg("--progress")
+				elseif program == "lz4" then
+					kind = "bytes"
+					command:arg("-v")
+				elseif program == "lha" then
+					kind = "lha"
 				end
 				local err
-				child, err = command:stdout(Command.PIPED):stderr(Command.PIPED):spawn()
+				child, err = command:arg(args):arg(files):cwd(root):stdout(Command.PIPED):stderr(Command.PIPED):spawn()
 				if not child then
 					error(phase .. ": " .. tostring(err), 0)
 				end
 
-				local diagnostic, tail, last = "", "", 0
+				local diagnostic = ""
+				local report = { tails = { "", "" }, last = 0, entries = 0, dots = 0 }
 				while true do
 					local chunk, event, read_err = child:read(4096)
 					if not chunk then
@@ -573,17 +675,10 @@ return {
 						chunk = string.char(table.unpack(chunk))
 					end
 					diagnostic = (diagnostic .. chunk):sub(-8192)
-					if sevenzip and event == 0 then
-						local text, percent = tail .. chunk, last
-						for line in text:gmatch("[^\r\n\b]+") do
-							percent = tonumber(line:match("^%s*(%d+)%%")) or percent
-						end
-						percent = math.min(100, percent)
-						tail = text:match("[^\r\n\b]*$"):sub(-4096)
-						if percent > last then
-							task:progress({ processed = percent - last })
-							last = percent
-						end
+					local percent = reported_progress(kind, report, chunk, event, stats)
+					if percent > report.last then
+						task:progress({ processed = percent - report.last })
+						report.last = percent
 					end
 				end
 
@@ -594,9 +689,8 @@ return {
 					error(phase .. ": " .. (diagnostic ~= "" and diagnostic or reason), 0)
 				end
 				child = nil
-				if sevenzip then
-					task:progress({ processed = 100 - last })
-				end
+				task:progress({ processed = 100 - report.last })
+				task:progress(native and { succeeded = 1 } or { success = 1 })
 			end
 
 			local ok, result = pcall(function()
@@ -612,25 +706,32 @@ return {
 				end
 				local temp_output = tostring(Url(temp_dir):join(intermediate))
 				local branch = select(function()
-					run(
-						Command(config.cmd):arg(config.args):arg(temp_output):arg(filenames):cwd(root),
-						"Create " .. ya.quote(name) .. " with " .. config.cmd,
-						config.cmd:match("^7z")
-					)
+					local stats
+					if config.cmd == "tar" or config.cmd == "bsdtar" then
+						task:log("Scan selected files")
+						stats =
+							input_stats(root, filenames, command_version(config.cmd):find("GNU tar", 1, true) ~= nil)
+					end
+					local files = { temp_output }
+					for _, file in ipairs(filenames) do
+						files[#files + 1] = file
+					end
+					run(config.cmd, config.args, files, "Create " .. ya.quote(name) .. " with " .. config.cmd, stats)
 					if config.compress then
-						local command = Command(config.compress):arg(config.compress_args)
+						files = { temp_output }
 						local target = tostring(Url(temp_dir):join(filename))
 						if config.compress:match("^7z") or config.compress == "lha" then
-							command:arg(target):arg(temp_output)
+							table.insert(files, 1, target)
 						elseif config.compress == "lz4" then
-							command:arg(temp_output):arg(target)
-						else
-							command:arg(temp_output)
+							files[#files + 1] = target
 						end
+						local stat = fs.cha(Url(temp_output), false)
 						run(
-							command,
+							config.compress,
+							config.compress_args,
+							files,
 							"Compress " .. ya.quote(name) .. " with " .. config.compress,
-							config.compress:match("^7z")
+							{ bytes = stat and stat.len or 0 }
 						)
 					end
 				end)
@@ -684,7 +785,6 @@ return {
 				notify(tostring(result), "error")
 			elseif result then
 				local to_name = result.name
-				task:progress(native and { succeeded = 1 } or { success = 1 })
 				task:succeed({ result })
 				if not state.silent then
 					notify("Successfully created archive: " .. ya.quote(to_name), "info")
