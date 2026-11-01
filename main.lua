@@ -75,12 +75,6 @@ local function find_command_name(cmd_list, bsdtar)
 	end
 end
 
-local function combine_url(path, file)
-	local path_url = Url(path)
-	local file_url = Url(file)
-	return tostring(path_url:join(file_url))
-end
-
 -- Archive from one shared directory so equal basenames keep distinct paths.
 local selected_or_hovered = ya.sync(function()
 	local tab = cx.active
@@ -230,12 +224,11 @@ local archive_commands = {
 		{ command = "zip", args = { "-r" }, level_arg = "-", level_min = 0, level_max = 9 },
 		{
 			command = sevenzip_commands,
-			args = { "a", "-tzip", "-spd" },
+			args = { "a", "-tzip", "-spd", "-mem=AES256" },
 			level_arg = "-mx=",
 			level_min = 0,
 			level_max = 9,
 			passwordable = true,
-			password_args = { "-mem=AES256" },
 		},
 		{
 			command = { "bsdtar", "tar" },
@@ -520,9 +513,6 @@ return {
 				return
 			end
 			config.args[#config.args + 1] = (state.headers and config.cmd == "rar" and "-hp" or "-p") .. password
-			for _, arg in ipairs(config.password_args or {}) do
-				config.args[#config.args + 1] = arg
-			end
 		end
 		if state.headers and config.cmd ~= "rar" then
 			config.args[#config.args + 1] = config.header_arg
@@ -556,7 +546,7 @@ return {
 			notify("Failed to create a temporary directory: " .. tostring(err), "error")
 			return
 		end
-		local temp_output = combine_url(temp_dir, intermediate)
+		local temp_output = tostring(Url(temp_dir):join(intermediate))
 
 		-- Custom tasks require Yazi 26.8. An entry already owns a plugin worker.
 		local cancel_scope
@@ -603,7 +593,7 @@ return {
 		end
 		if config.compress then
 			local command = Command(config.compress):arg(config.compress_args)
-			local target = combine_url(temp_dir, filename)
+			local target = tostring(Url(temp_dir):join(filename))
 			if config.compress:match("^7z") or config.compress == "lha" then
 				command:arg(target):arg(temp_output)
 			elseif config.compress == "lz4" then
